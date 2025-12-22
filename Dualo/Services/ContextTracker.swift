@@ -105,12 +105,14 @@ class ContextTracker: ObservableObject, ContextTracking {
         case .anthropic, .openai:
             contextLimit = APIProvider.contextSize(for: model, provider: provider)
         case .local:
-            // Look up local model context size
+            // Look up local model context size, capped to the actual mobile limit used by GGUFService
+            // The model may advertise 32K+ context, but we cap it for mobile RAM constraints
+            let maxMobileContext = AppConstants.LocalModels.maxMobileContextTokens
             if let manager = localModelManager ?? LocalModelManager.shared as LocalModelManager?,
                let localModel = manager.availableModels.first(where: { $0.id == model }) {
-                contextLimit = localModel.contextSize
+                contextLimit = min(localModel.contextSize, maxMobileContext)
             } else {
-                contextLimit = 4096 // Conservative default for unknown local models
+                contextLimit = maxMobileContext // Default for unknown local models
             }
         }
         

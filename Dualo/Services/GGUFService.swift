@@ -86,7 +86,7 @@ class GGUFService: ObservableObject, GGUFServicing {
     /// Store model info for context recreation
     private var loadedModelPath: URL?
     private var loadedModelTemplate: Template?
-    private var loadedModelContextSize: Int32 = 4096
+    private var loadedModelContextSize: Int32 = Int32(AppConstants.LocalModels.maxMobileContextTokens)
 
     /// Cached regex for stripping thinking blocks (compiled once for performance)
     private static let thinkingBlockRegex: NSRegularExpression? = {
@@ -187,9 +187,8 @@ class GGUFService: ObservableObject, GGUFServicing {
         
         // Get the model's context size, capped for mobile memory constraints
         // Full context (32K+) would use too much RAM for the KV cache
-        // 4096 tokens is a good balance for mobile devices
-        let maxMobileContext: Int32 = 4096
-        let modelContextSize = Int32(modelInfo?.contextSize ?? 4096)
+        let maxMobileContext = Int32(AppConstants.LocalModels.maxMobileContextTokens)
+        let modelContextSize = Int32(modelInfo?.contextSize ?? AppConstants.LocalModels.maxMobileContextTokens)
         let contextSize = min(modelContextSize, maxMobileContext)
         print("📐 Using context size: \(contextSize) tokens (model supports \(modelContextSize))")
         
@@ -232,7 +231,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         loadedModelId = nil
         loadedModelPath = nil
         loadedModelTemplate = nil
-        loadedModelContextSize = 4096
+        loadedModelContextSize = Int32(AppConstants.LocalModels.maxMobileContextTokens)
         currentConversationId = nil
         print("🗑️ GGUF model unloaded")
     }
@@ -533,8 +532,6 @@ class GGUFService: ObservableObject, GGUFServicing {
             )
         case .llama:
             return .alpaca(systemPrompt)
-        case .mistral:
-            return .chatML(systemPrompt)
         case .qwen:
             return .chatML(systemPrompt)
         }

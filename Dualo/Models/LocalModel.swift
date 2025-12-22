@@ -14,7 +14,6 @@ enum TemplateType: String, Codable {
     case chatML     // ChatML format (default, works with many models)
     case gemma      // Google Gemma models
     case llama      // Meta Llama models
-    case mistral    // Mistral models
     case qwen       // Qwen models
 }
 
@@ -185,21 +184,6 @@ struct LocalModelCatalog {
             minRAMGB: 6,
             templateType: .chatML,
             contextSize: 16_384, // 16K context
-            downloadState: .notDownloaded
-        ),
-        
-        // MARK: - Mistral Series
-        LocalModel(
-            id: "mistral-7b-q4",
-            displayName: "Mistral 7B v0.3",
-            huggingFaceRepo: "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-            ggufFileName: "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-            sizeBytes: 4_400_000_000, // ~4.4GB
-            description: "Mistral's flagship 7B model. Excellent general performance. Requires 8GB+ RAM.",
-            recommended: false,
-            minRAMGB: 8,
-            templateType: .mistral,
-            contextSize: 32_768, // 32K context
             downloadState: .notDownloaded
         ),
         

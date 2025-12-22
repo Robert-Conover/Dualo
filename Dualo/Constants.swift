@@ -118,6 +118,11 @@ enum AppConstants {
         static let modelLoadTimeoutSeconds: TimeInterval = 120
         static let defaultMaxTokens = 2048
         static let defaultTemperature: Float = 0.7
+        
+        // Context window cap for mobile devices
+        // Full context (32K+) would use too much RAM for the KV cache
+        // 4096 tokens is a balance for mobile devices
+        static let maxMobileContextTokens = 4096
     }
 }
 
