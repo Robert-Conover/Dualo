@@ -292,6 +292,11 @@ class ChatViewModel: ObservableObject {
                        let userMsgId = streamingUserMessageId {
                         hasMarkedUserMessageSent = true
                         updateMessageStatus(userMsgId, status: .sent)
+
+                        // Haptic feedback on first token - immediate confirmation message was accepted
+                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
+                        sentFeedback.impactOccurred()
+
                         #if DEBUG
                         print("ChatViewModel: Marked user message as sent (first token received)")
                         #endif
@@ -334,11 +339,7 @@ class ChatViewModel: ObservableObject {
                 
                 // Explicitly trigger a view update to ensure conversation sync
                 objectWillChange.send()
-                
-                // Add haptic feedback for completion
-                let successFeedback = UINotificationFeedbackGenerator()
-                successFeedback.notificationOccurred(.success)
-                
+
             } catch {
                 if !Task.isCancelled {
                     handleStreamingError(error)
@@ -555,28 +556,29 @@ class ChatViewModel: ObservableObject {
                        let userMsgId = streamingUserMessageId {
                         hasMarkedUserMessageSent = true
                         updateMessageStatus(userMsgId, status: .sent)
+
+                        // Haptic feedback on first token - immediate confirmation message was accepted
+                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
+                        sentFeedback.impactOccurred()
                     }
-                    
+
                     updateStreamingMessageContent()
                 }
-                
+
                 updateStreamingMessageContent(forcePersist: true)
-                
+
                 // Mark user message as sent (if not already marked on first token)
                 if !hasMarkedUserMessageSent {
                     updateMessageStatus(messageId, status: .sent)
                 }
-                
+
                 isStreaming = false
                 streamingBuffer = ""
                 streamingMessageContent = ""
                 streamingMessageId = nil
                 streamingUserMessageId = nil
-                
+
                 objectWillChange.send()
-                
-                let successFeedback = UINotificationFeedbackGenerator()
-                successFeedback.notificationOccurred(.success)
                 
             } catch {
                 if !Task.isCancelled {

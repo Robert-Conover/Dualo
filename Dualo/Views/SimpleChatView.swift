@@ -687,6 +687,11 @@ struct SimpleChatView: View {
     
     // MARK: - Extracted Toolbar Views (fixes compiler type-check complexity)
     
+    /// Whether model switching should be disabled (during streaming/loading to prevent crashes)
+    private var isModelSwitchingDisabled: Bool {
+        viewModel.isStreaming || viewModel.isLoading || ggufService.isLoading || ggufService.isGenerating
+    }
+    
     @ViewBuilder
     private var modelSelectorToolbarItem: some View {
         Menu {
@@ -695,6 +700,8 @@ struct SimpleChatView: View {
         } label: {
             modelSelectorLabel
         }
+        .disabled(isModelSwitchingDisabled)
+        .opacity(isModelSwitchingDisabled ? 0.5 : 1.0)
     }
     
     @ViewBuilder
@@ -838,6 +845,12 @@ struct SimpleChatView: View {
     }
     
     private func changeConversationModel(to newModel: String, provider: APIProvider) {
+        // Safety guard: prevent model switching during streaming/generation
+        guard !isModelSwitchingDisabled else {
+            print("SimpleChatView: Model switch blocked - streaming/loading in progress")
+            return
+        }
+        
         // Unload local model when switching to API provider
         if provider != .local && GGUFService.shared.isModelLoaded {
             GGUFService.shared.unloadModel()
@@ -890,6 +903,12 @@ struct SimpleChatView: View {
     }
     
     private func changeToLocalModel(_ model: LocalModel) {
+        // Safety guard: prevent model switching during streaming/generation
+        guard !isModelSwitchingDisabled else {
+            print("SimpleChatView: Local model switch blocked - streaming/loading in progress")
+            return
+        }
+        
         // IMPORTANT: Get the CURRENT conversation from conversationManager, not the stale `conversation` prop
         // The `conversation` prop is a snapshot from when the view was created and doesn't include new messages
         guard var updatedConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) else {

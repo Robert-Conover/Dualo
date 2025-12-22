@@ -191,6 +191,11 @@ struct HomeView: View {
     
     // MARK: - Model Selector with Native Menu
     
+    /// Whether model switching should be disabled (during streaming/generation to prevent crashes)
+    private var isModelSwitchingDisabled: Bool {
+        ggufService.isLoading || ggufService.isGenerating
+    }
+    
     @ViewBuilder
     private var modelSelector: some View {
         Menu {
@@ -255,8 +260,8 @@ struct HomeView: View {
             .padding(.vertical, 10)
             .glassEffect(in: .capsule)
         }
-        .disabled(viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty)
-        .opacity((viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty) ? 0.5 : 1)
+        .disabled(isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty))
+        .opacity((isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty)) ? 0.5 : 1)
     }
     
     // MARK: - New Chat Button with Glass Effect (matched sizing to toolbar)
@@ -478,6 +483,12 @@ struct HomeView: View {
     }
     
     private func updateModelWithProvider(_ newModel: String, provider: APIProvider) {
+        // Safety guard: prevent model switching during generation
+        guard !isModelSwitchingDisabled else {
+            print("HomeView: Model switch blocked - loading/generating in progress")
+            return
+        }
+        
         // Unload local model when switching to API provider
         if provider != .local && GGUFService.shared.isModelLoaded {
             GGUFService.shared.unloadModel()
@@ -516,6 +527,12 @@ struct HomeView: View {
     }
     
     private func selectLocalModel(_ model: LocalModel) {
+        // Safety guard: prevent model switching during generation
+        guard !isModelSwitchingDisabled else {
+            print("HomeView: Local model switch blocked - loading/generating in progress")
+            return
+        }
+        
         // Set the selected model in LocalModelManager
         localModelManager.selectedModelId = model.id
         
