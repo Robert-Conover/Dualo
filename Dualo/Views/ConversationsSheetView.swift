@@ -58,7 +58,14 @@ struct ConversationsSheetView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Are you sure you want to delete this conversation? This action cannot be undone.")
+            if let conversation = conversationToDelete {
+                let truncatedTitle = conversation.title.count > 50
+                    ? String(conversation.title.prefix(50)) + "..."
+                    : conversation.title
+                Text("Delete '\(truncatedTitle)'?\n\nThis action cannot be undone.")
+            } else {
+                Text("Are you sure you want to delete this conversation? This action cannot be undone.")
+            }
         }
         .alert("Rename Conversation", isPresented: $showingRenameAlert) {
             TextField("Title", text: $renameText)

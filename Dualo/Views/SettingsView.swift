@@ -49,6 +49,7 @@ struct SettingsView: View {
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @FocusState private var isInputFocused: Bool
+    @State private var apiKeyValidationErrors: [APIProvider: String] = [:]
     
     // Animation
     @State private var animateHeader = false
@@ -381,24 +382,42 @@ struct SettingsView: View {
                     Image(systemName: "key.fill")
                         .foregroundStyle(.orange)
                 }
-                
-                HStack(spacing: 12) {
-                    SecureField("Enter your \(selectedProvider.displayName) API key", text: apiKeyBinding)
-                    .textContentType(.password)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .focused($isInputFocused)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.tertiarySystemGroupedBackground))
-                        )
-                    .onChangeCompat(of: apiKeys[selectedProvider] ?? "") { newKey in
-                        handleAPIKeyChange(newKey)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        SecureField("Enter your \(selectedProvider.displayName) API key", text: apiKeyBinding)
+                        .textContentType(.password)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .focused($isInputFocused)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color(.tertiarySystemGroupedBackground))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(apiKeyValidationErrors[selectedProvider] != nil ? Color.red : Color.clear, lineWidth: 1)
+                                    )
+                            )
+                        .onChangeCompat(of: apiKeys[selectedProvider] ?? "") { newKey in
+                            handleAPIKeyChange(newKey)
+                        }
+                    }
+
+                    // Inline validation error
+                    if let errorMessage = apiKeyValidationErrors[selectedProvider] {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.caption)
+                            Text(errorMessage)
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.red)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                
+
                 Label("Encrypted and stored securely in Keychain", systemImage: "lock.shield.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -456,39 +475,63 @@ struct SettingsView: View {
     }
     
     private var testConnectionButton: some View {
-        Button(action: {
-            testConnection()
-        }) {
-            HStack(spacing: 12) {
-                if isTestingConnection {
-                    ProgressView()
-                        .scaleEffect(0.9)
-                } else if let result = connectionTestResult {
-                    switch result {
-                    case .success:
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    case .failure:
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.red)
+        HStack(spacing: 12) {
+            Button(action: {
+                testConnection()
+            }) {
+                HStack(spacing: 12) {
+                    if isTestingConnection {
+                        ProgressView()
+                            .scaleEffect(0.9)
+                    } else if let result = connectionTestResult {
+                        switch result {
+                        case .success:
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        case .failure:
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                    } else {
+                        Image(systemName: "wifi.circle")
+                        .foregroundStyle(.blue)
+                }
+
+                    Text(testConnectionButtonText)
+                        .fontWeight(.medium)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+            }
+            .disabled(currentAPIKey.isEmpty || isTestingConnection)
+            .opacity(currentAPIKey.isEmpty ? 0.5 : 1)
+
+            // Dismiss button (only visible when there's a result)
+            if connectionTestResult != nil && !isTestingConnection {
+                Button(action: {
+                    withAnimation {
+                        connectionTestResult = nil
                     }
-                } else {
-                    Image(systemName: "wifi.circle")
-                    .foregroundStyle(.blue)
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(.secondarySystemGroupedBackground))
+                        )
+                }
+                .transition(.scale.combined(with: .opacity))
             }
-            
-                Text(testConnectionButtonText)
-                    .fontWeight(.medium)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.secondarySystemGroupedBackground))
-            )
         }
-        .disabled(currentAPIKey.isEmpty || isTestingConnection)
-        .opacity(currentAPIKey.isEmpty ? 0.5 : 1)
     }
     
     private var testConnectionButtonText: String {
@@ -803,11 +846,18 @@ struct SettingsView: View {
     private func handleAPIKeyChange(_ newKey: String) {
         debounceTask?.cancel()
         connectionTestResult = nil // Reset test result when key changes
-        
+
+        // Validate API key format immediately
+        if let error = validateAPIKeyFormat(newKey, for: selectedProvider) {
+            apiKeyValidationErrors[selectedProvider] = error
+        } else {
+            apiKeyValidationErrors[selectedProvider] = nil
+        }
+
         debounceTask = Task { @MainActor in
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
-                
+
                 if !Task.isCancelled {
                     autoSaveConfiguration()
                 }
@@ -820,13 +870,21 @@ struct SettingsView: View {
     private func handleProviderChange(_ newProvider: APIProvider) {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
-        
+
         connectionTestResult = nil // Reset test result when provider changes
-        
+
+        // Validate the new provider's API key
+        let newKey = apiKeys[newProvider] ?? ""
+        if let error = validateAPIKeyFormat(newKey, for: newProvider) {
+            apiKeyValidationErrors[newProvider] = error
+        } else {
+            apiKeyValidationErrors[newProvider] = nil
+        }
+
         if selectedModels[newProvider] == nil {
             selectedModels[newProvider] = newProvider.defaultModel
         }
-        
+
         autoSaveConfiguration()
     }
     
@@ -901,9 +959,9 @@ struct SettingsView: View {
         if provider == .local {
             return true
         }
-        
+
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         switch provider {
         case .anthropic:
             return trimmedKey.hasPrefix(AppConstants.Security.anthropicKeyPrefix) && trimmedKey.count > 20
@@ -912,6 +970,34 @@ struct SettingsView: View {
         case .local:
             return true
         }
+    }
+
+    private func validateAPIKeyFormat(_ apiKey: String, for provider: APIProvider) -> String? {
+        if provider == .local {
+            return nil
+        }
+
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Don't show error if field is empty
+        if trimmedKey.isEmpty {
+            return nil
+        }
+
+        switch provider {
+        case .anthropic:
+            if !trimmedKey.hasPrefix(AppConstants.Security.anthropicKeyPrefix) {
+                return "Anthropic API keys must start with '\(AppConstants.Security.anthropicKeyPrefix)'"
+            }
+        case .openai:
+            if !trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) {
+                return "OpenAI API keys must start with '\(AppConstants.Security.openaiKeyPrefix)'"
+            }
+        case .local:
+            return nil
+        }
+
+        return nil
     }
     
     private func testConnection() {
@@ -938,15 +1024,9 @@ struct SettingsView: View {
                 await MainActor.run {
                     isTestingConnection = false
                     connectionTestResult = .success
-                    
+
                     let successFeedback = UINotificationFeedbackGenerator()
                     successFeedback.notificationOccurred(.success)
-                }
-                
-                // Reset after delay
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                await MainActor.run {
-                    connectionTestResult = nil
                 }
             } catch {
                 await MainActor.run {
