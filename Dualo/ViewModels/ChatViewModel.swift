@@ -19,9 +19,11 @@ class ChatViewModel: ObservableObject {
     @Published var streamingMessageContent = ""
     @Published var pendingAttachments: [ImageAttachment] = []
 
-    private let apiService = APIService.shared
-    private let conversationManager = ConversationManager.shared
-    private let contextTracker = ContextTracker.shared
+    // MARK: - Dependencies (injected for testability)
+    private let apiService: APIServiceProtocol
+    private let conversationManager: ConversationManaging
+    private let contextTracker: ContextTracking
+
     private var streamingTask: Task<Void, Never>?
     private var currentConversationId: UUID?
     private var streamingMessageId: UUID?
@@ -49,9 +51,30 @@ class ChatViewModel: ObservableObject {
         return conversation.messages
     }
     
+    // MARK: - Initialization
+
+    /// Initialize with default production dependencies
     init() {
+        self.apiService = APIService.shared
+        self.conversationManager = ConversationManager.shared
+        self.contextTracker = ContextTracker.shared
         loadConfiguration()
-        // Don't auto-load messages anymore, they come from conversations
+    }
+
+    /// Initialize with custom dependencies (for testing)
+    /// - Parameters:
+    ///   - apiService: API service for cloud provider communication
+    ///   - conversationManager: Conversation persistence manager
+    ///   - contextTracker: Context window usage tracker
+    init(
+        apiService: APIServiceProtocol,
+        conversationManager: ConversationManaging,
+        contextTracker: ContextTracking
+    ) {
+        self.apiService = apiService
+        self.conversationManager = conversationManager
+        self.contextTracker = contextTracker
+        loadConfiguration()
     }
     
     func loadConversation(_ conversation: Conversation) {
@@ -95,7 +118,8 @@ class ChatViewModel: ObservableObject {
         // Configure context tracker for this conversation
         contextTracker.configure(
             model: conversation.model,
-            provider: conversation.provider
+            provider: conversation.provider,
+            localModelManager: LocalModelManager.shared
         )
         contextTracker.updateFromMessages(conversation.messages)
         

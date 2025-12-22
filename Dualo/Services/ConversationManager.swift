@@ -15,7 +15,7 @@ struct PendingChatData {
 }
 
 @MainActor
-class ConversationManager: ObservableObject {
+class ConversationManager: ObservableObject, ConversationManaging {
     @Published var conversations: [Conversation] = []
     @Published var currentConversation: Conversation?
     @Published private(set) var isLoading = true
@@ -209,12 +209,10 @@ class ConversationManager: ObservableObject {
             print("ConversationManager: Migration errors occurred:")
             migrationErrors.forEach { print("  - \($0)") }
         }
-        
+
         // Remove from UserDefaults after successful migration
-        DispatchQueue.main.async {
-            UserDefaults.standard.removeObject(forKey: legacyKey)
-        }
-        
+        UserDefaults.standard.removeObject(forKey: legacyKey)
+
         print("ConversationManager: Successfully migrated \(legacyConversations.count) conversations to file storage")
         return legacyConversations
     }
@@ -379,7 +377,7 @@ class ConversationManager: ObservableObject {
             } catch {
                 print("ConversationManager: Error saving conversation \(conversationCopy.id.uuidString.prefix(8)): \(error.localizedDescription)")
                 // Report save failure to UI on main thread
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self?.storageError = .saveFailed(conversationCopy.id, error.localizedDescription)
                 }
             }

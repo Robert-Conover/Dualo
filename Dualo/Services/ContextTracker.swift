@@ -55,7 +55,7 @@ struct ContextUsageInfo {
 // MARK: - Context Tracker
 
 @MainActor
-class ContextTracker: ObservableObject {
+class ContextTracker: ObservableObject, ContextTracking {
     static let shared = ContextTracker()
     
     // MARK: - Published Properties

@@ -11,14 +11,19 @@ protocol APIServiceProtocol {
     func sendMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) async throws -> String
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) -> AsyncThrowingStream<String, Error>
     func fetchAvailableModels(for provider: APIProvider, apiKey: String) async throws -> [String]
+    func stopStreaming()
 }
 
 class APIService: APIServiceProtocol {
     static let shared = APIService()
-    
+
     private let session: URLSession
     private var currentStreamingTask: Task<Void, Never>?
-    
+
+    // Message formatters for different providers
+    private let anthropicFormatter = AnthropicMessageFormatter()
+    private let openAIFormatter = OpenAIMessageFormatter()
+
     private init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = AppConstants.Network.defaultTimeoutInterval
@@ -135,7 +140,11 @@ class APIService: APIServiceProtocol {
         request.setValue(AppConstants.API.anthropicVersionHeader, forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let messages = formatMessagesForAnthropic(currentMessage: message, history: history, attachments: attachments)
+        let messages = anthropicFormatter.formatMessages(
+            currentMessage: message,
+            history: history,
+            attachments: attachments
+        )
 
         let requestBody: [String: Any] = [
             "model": config.model,
@@ -146,32 +155,12 @@ class APIService: APIServiceProtocol {
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
         let (data, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }
-        
-        if httpResponse.statusCode == 401 {
-            throw NetworkError.invalidAPIKey
-        } else if httpResponse.statusCode == 429 {
-            throw NetworkError.rateLimitExceeded
-        } else if httpResponse.statusCode >= 400 {
-            // Enhanced error handling with provider error details for Anthropic
-            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorData["error"] as? [String: Any] {
-                
-                let message = error["message"] as? String ?? "Unknown error"
-                let type = error["type"] as? String
-                
-                var detailedMessage = message
-                if let type = type {
-                    detailedMessage += " (Type: \(type))"
-                }
-                
-                throw NetworkError.serverError(detailedMessage)
-            }
-            throw NetworkError.serverError("HTTP \(httpResponse.statusCode)")
-        }
+
+        try HTTPErrorHandler.handleResponse(httpResponse, data: data, provider: .anthropic)
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]],
@@ -193,7 +182,11 @@ class APIService: APIServiceProtocol {
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let messages = formatMessagesForOpenAI(currentMessage: message, history: history, attachments: attachments)
+        let messages = openAIFormatter.formatMessages(
+            currentMessage: message,
+            history: history,
+            attachments: attachments
+        )
         
         var requestBody: [String: Any] = [
             "model": config.model,
@@ -214,36 +207,12 @@ class APIService: APIServiceProtocol {
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
         
         let (data, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }
-        
-        if httpResponse.statusCode == 401 {
-            throw NetworkError.invalidAPIKey
-        } else if httpResponse.statusCode == 429 {
-            throw NetworkError.rateLimitExceeded
-        } else if httpResponse.statusCode >= 400 {
-            // Enhanced error handling with provider error details
-            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorData["error"] as? [String: Any] {
-                
-                let message = error["message"] as? String ?? "Unknown error"
-                let type = error["type"] as? String
-                let code = error["code"] as? String
-                
-                var detailedMessage = message
-                if let type = type {
-                    detailedMessage += " (Type: \(type))"
-                }
-                if let code = code {
-                    detailedMessage += " (Code: \(code))"
-                }
-                
-                throw NetworkError.serverError(detailedMessage)
-            }
-            throw NetworkError.serverError("HTTP \(httpResponse.statusCode)")
-        }
+
+        try HTTPErrorHandler.handleResponse(httpResponse, data: data, provider: .openai)
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -255,167 +224,7 @@ class APIService: APIServiceProtocol {
         
         return content
     }
-    
-    private func formatMessagesForAnthropic(currentMessage: String, history: [Message], attachments: [MessageAttachment] = []) -> [[String: Any]] {
-        var messages: [[String: Any]] = []
 
-        // Format history messages (may include attachments)
-        for msg in history {
-            if msg.hasAttachments {
-                var content: [[String: Any]] = []
-
-                // Add image blocks first for Anthropic
-                for attachment in msg.attachments {
-                    content.append([
-                        "type": "image",
-                        "source": [
-                            "type": "base64",
-                            "media_type": attachment.mediaType,
-                            "data": attachment.data
-                        ]
-                    ])
-                }
-
-                // Add text content
-                if !msg.content.isEmpty {
-                    content.append([
-                        "type": "text",
-                        "text": msg.content
-                    ])
-                }
-
-                messages.append([
-                    "role": msg.role,
-                    "content": content
-                ])
-            } else {
-                // Simple text message
-                messages.append([
-                    "role": msg.role,
-                    "content": msg.content
-                ])
-            }
-        }
-
-        // Format current message with any new attachments
-        if !attachments.isEmpty {
-            var content: [[String: Any]] = []
-
-            for attachment in attachments {
-                content.append([
-                    "type": "image",
-                    "source": [
-                        "type": "base64",
-                        "media_type": attachment.mediaType,
-                        "data": attachment.data
-                    ]
-                ])
-            }
-
-            if !currentMessage.isEmpty {
-                content.append([
-                    "type": "text",
-                    "text": currentMessage
-                ])
-            } else {
-                content.append([
-                    "type": "text",
-                    "text": "What's in this image?"
-                ])
-            }
-
-            messages.append([
-                "role": "user",
-                "content": content
-            ])
-        } else {
-            messages.append([
-                "role": "user",
-                "content": currentMessage
-            ])
-        }
-
-        return messages
-    }
-    
-    private func formatMessagesForOpenAI(currentMessage: String, history: [Message], attachments: [MessageAttachment] = []) -> [[String: Any]] {
-        var messages: [[String: Any]] = []
-
-        // Format history messages
-        for msg in history {
-            if msg.hasAttachments {
-                var content: [[String: Any]] = []
-
-                // Text first for OpenAI
-                if !msg.content.isEmpty {
-                    content.append([
-                        "type": "text",
-                        "text": msg.content
-                    ])
-                }
-
-                // Add image blocks
-                for attachment in msg.attachments {
-                    content.append([
-                        "type": "image_url",
-                        "image_url": [
-                            "url": "data:\(attachment.mediaType);base64,\(attachment.data)"
-                        ]
-                    ])
-                }
-
-                messages.append([
-                    "role": msg.role,
-                    "content": content
-                ])
-            } else {
-                messages.append([
-                    "role": msg.role,
-                    "content": msg.content
-                ])
-            }
-        }
-
-        // Format current message
-        if !attachments.isEmpty {
-            var content: [[String: Any]] = []
-
-            // Text first for OpenAI
-            if !currentMessage.isEmpty {
-                content.append([
-                    "type": "text",
-                    "text": currentMessage
-                ])
-            } else {
-                content.append([
-                    "type": "text",
-                    "text": "What's in this image?"
-                ])
-            }
-
-            for attachment in attachments {
-                content.append([
-                    "type": "image_url",
-                    "image_url": [
-                        "url": "data:\(attachment.mediaType);base64,\(attachment.data)"
-                    ]
-                ])
-            }
-
-            messages.append([
-                "role": "user",
-                "content": content
-            ])
-        } else {
-            messages.append([
-                "role": "user",
-                "content": currentMessage
-            ])
-        }
-
-        return messages
-    }
-    
     private func fetchAnthropicModels(apiKey: String) async throws -> [String] {
         guard let url = URL(string: "https://api.anthropic.com/v1/models") else {
             throw NetworkError.invalidURL
@@ -428,32 +237,12 @@ class APIService: APIServiceProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let (data, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }
-        
-        if httpResponse.statusCode == 401 {
-            throw NetworkError.invalidAPIKey
-        } else if httpResponse.statusCode == 429 {
-            throw NetworkError.rateLimitExceeded
-        } else if httpResponse.statusCode >= 400 {
-            // Enhanced error handling for Anthropic models fetch
-            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorData["error"] as? [String: Any] {
-                
-                let message = error["message"] as? String ?? "Unknown error"
-                let type = error["type"] as? String
-                
-                var detailedMessage = message
-                if let type = type {
-                    detailedMessage += " (Type: \(type))"
-                }
-                
-                throw NetworkError.serverError(detailedMessage)
-            }
-            throw NetworkError.serverError("HTTP \(httpResponse.statusCode)")
-        }
+
+        try HTTPErrorHandler.handleResponse(httpResponse, data: data, provider: .anthropic)
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let data = json["data"] as? [[String: Any]] else {
@@ -478,36 +267,12 @@ class APIService: APIServiceProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let (data, response) = try await session.data(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
         }
-        
-        if httpResponse.statusCode == 401 {
-            throw NetworkError.invalidAPIKey
-        } else if httpResponse.statusCode == 429 {
-            throw NetworkError.rateLimitExceeded
-        } else if httpResponse.statusCode >= 400 {
-            // Enhanced error handling for OpenAI models fetch
-            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = errorData["error"] as? [String: Any] {
-                
-                let message = error["message"] as? String ?? "Unknown error"
-                let type = error["type"] as? String
-                let code = error["code"] as? String
-                
-                var detailedMessage = message
-                if let type = type {
-                    detailedMessage += " (Type: \(type))"
-                }
-                if let code = code {
-                    detailedMessage += " (Code: \(code))"
-                }
-                
-                throw NetworkError.serverError(detailedMessage)
-            }
-            throw NetworkError.serverError("HTTP \(httpResponse.statusCode)")
-        }
+
+        try HTTPErrorHandler.handleResponse(httpResponse, data: data, provider: .openai)
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let data = json["data"] as? [[String: Any]] else {
@@ -535,7 +300,11 @@ class APIService: APIServiceProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-        let messages = formatMessagesForOpenAI(currentMessage: message, history: history, attachments: attachments)
+        let messages = openAIFormatter.formatMessages(
+            currentMessage: message,
+            history: history,
+            attachments: attachments
+        )
         
         var requestBody: [String: Any] = [
             "model": config.model,
@@ -555,23 +324,43 @@ class APIService: APIServiceProtocol {
         
         // Use bytes(for:) for true incremental streaming
         let (bytes, response) = try await session.bytes(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             continuation.finish(throwing: NetworkError.invalidResponse)
             return
         }
-        
+
+        // For streaming, we need to collect error data from the stream if status is not 200
         guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                continuation.finish(throwing: NetworkError.invalidAPIKey)
-            } else if httpResponse.statusCode == 429 {
-                continuation.finish(throwing: NetworkError.rateLimitExceeded)
-            } else {
-                continuation.finish(throwing: NetworkError.serverError("HTTP \(httpResponse.statusCode)"))
+            // Collect error data from stream for better error messages
+            var errorData = Data()
+            do {
+                for try await byte in bytes {
+                    errorData.append(byte)
+                    // Limit error data collection to prevent memory issues
+                    if errorData.count > 10000 { break }
+                }
+            } catch {
+                // If we can't read error data, fall back to basic error handling
+                if httpResponse.statusCode == 401 {
+                    continuation.finish(throwing: NetworkError.invalidAPIKey)
+                } else if httpResponse.statusCode == 429 {
+                    continuation.finish(throwing: NetworkError.rateLimitExceeded)
+                } else {
+                    continuation.finish(throwing: NetworkError.serverError("HTTP \(httpResponse.statusCode)"))
+                }
+                return
+            }
+
+            // Use HTTPErrorHandler for consistent error parsing
+            do {
+                try HTTPErrorHandler.handleResponse(httpResponse, data: errorData, provider: .openai)
+            } catch {
+                continuation.finish(throwing: error)
             }
             return
         }
-        
+
         // Process SSE stream using proper UTF-8 line decoding
         // Using .lines handles multi-byte UTF-8 characters correctly (fixes mojibake with curly quotes)
         for try await line in bytes.lines {
@@ -579,18 +368,18 @@ class APIService: APIServiceProtocol {
                 continuation.finish()
                 return
             }
-            
+
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
+
             guard trimmedLine.hasPrefix("data: ") else { continue }
-            
+
             let jsonString = String(trimmedLine.dropFirst(6))
-            
+
             if jsonString == "[DONE]" {
                 continuation.finish()
                 return
             }
-            
+
             guard let jsonData = jsonString.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
@@ -599,14 +388,14 @@ class APIService: APIServiceProtocol {
                   let content = delta["content"] as? String else {
                 continue
             }
-            
+
             // Yield each chunk immediately as it arrives
             continuation.yield(content)
         }
-        
+
         continuation.finish()
     }
-    
+
     private func streamAnthropicMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment] = [], continuation: AsyncThrowingStream<String, Error>.Continuation) async throws {
         guard let url = URL(string: "https://api.anthropic.com/v1/messages") else {
             continuation.finish(throwing: NetworkError.invalidURL)
@@ -620,7 +409,11 @@ class APIService: APIServiceProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-        let messages = formatMessagesForAnthropic(currentMessage: message, history: history, attachments: attachments)
+        let messages = anthropicFormatter.formatMessages(
+            currentMessage: message,
+            history: history,
+            attachments: attachments
+        )
         
         let requestBody: [String: Any] = [
             "model": config.model,
@@ -630,26 +423,46 @@ class APIService: APIServiceProtocol {
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        
+
         // Use bytes(for:) for true incremental streaming
         let (bytes, response) = try await session.bytes(for: request)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             continuation.finish(throwing: NetworkError.invalidResponse)
             return
         }
-        
+
+        // For streaming, we need to collect error data from the stream if status is not 200
         guard httpResponse.statusCode == 200 else {
-            if httpResponse.statusCode == 401 {
-                continuation.finish(throwing: NetworkError.invalidAPIKey)
-            } else if httpResponse.statusCode == 429 {
-                continuation.finish(throwing: NetworkError.rateLimitExceeded)
-            } else {
-                continuation.finish(throwing: NetworkError.serverError("HTTP \(httpResponse.statusCode)"))
+            // Collect error data from stream for better error messages
+            var errorData = Data()
+            do {
+                for try await byte in bytes {
+                    errorData.append(byte)
+                    // Limit error data collection to prevent memory issues
+                    if errorData.count > 10000 { break }
+                }
+            } catch {
+                // If we can't read error data, fall back to basic error handling
+                if httpResponse.statusCode == 401 {
+                    continuation.finish(throwing: NetworkError.invalidAPIKey)
+                } else if httpResponse.statusCode == 429 {
+                    continuation.finish(throwing: NetworkError.rateLimitExceeded)
+                } else {
+                    continuation.finish(throwing: NetworkError.serverError("HTTP \(httpResponse.statusCode)"))
+                }
+                return
+            }
+
+            // Use HTTPErrorHandler for consistent error parsing
+            do {
+                try HTTPErrorHandler.handleResponse(httpResponse, data: errorData, provider: .anthropic)
+            } catch {
+                continuation.finish(throwing: error)
             }
             return
         }
-        
+
         // Process SSE stream using proper UTF-8 line decoding
         // Using .lines handles multi-byte UTF-8 characters correctly (fixes mojibake with curly quotes)
         for try await line in bytes.lines {
@@ -657,19 +470,19 @@ class APIService: APIServiceProtocol {
                 continuation.finish()
                 return
             }
-            
+
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
+
             guard trimmedLine.hasPrefix("data: ") else { continue }
-            
+
             let jsonString = String(trimmedLine.dropFirst(6))
-            
+
             guard let jsonData = jsonString.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                   let type = json["type"] as? String else {
                 continue
             }
-            
+
             switch type {
             case "content_block_delta":
                 if let delta = json["delta"] as? [String: Any],
@@ -692,7 +505,7 @@ class APIService: APIServiceProtocol {
                 break // Ignore other event types like message_start, content_block_start
             }
         }
-        
+
         continuation.finish()
     }
 }

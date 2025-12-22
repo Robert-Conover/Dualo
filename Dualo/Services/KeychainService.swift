@@ -8,18 +8,20 @@
 import Foundation
 import Security
 
-class KeychainService {
+class KeychainService: KeychainServicing {
     static let shared = KeychainService()
-    
+
     // Use bundle identifier for better security isolation
     private let service: String
     private let configKey = AppConstants.Security.configurationKey
     private let providerConfigsKey = AppConstants.Security.providerConfigurationsKey
-    
+    private let queryBuilder: KeychainQueryBuilder
+
     private init() {
         // Get the bundle identifier, fallback to legacy service ID for migration
         self.service = Bundle.main.bundleIdentifier ?? AppConstants.Security.legacyKeychainService
-        
+        self.queryBuilder = KeychainQueryBuilder(service: service)
+
         #if DEBUG
         print("KeychainService: Using service identifier: \(service)")
         #endif
@@ -28,63 +30,47 @@ class KeychainService {
     func saveAPIConfiguration(_ config: APIConfiguration) throws {
         // Validate API key before storage
         try validateAPIKey(config.apiKey, for: config.provider)
-        
+
         let encoder = JSONEncoder()
         let data = try encoder.encode(config)
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: configKey,
-            kSecValueData as String: data
-        ]
-        
-        SecItemDelete(query as CFDictionary)
-        
-        let status = SecItemAdd(query as CFDictionary, nil)
-        
+
+        let deleteQuery = queryBuilder.deleteQuery(for: configKey)
+        SecItemDelete(deleteQuery as CFDictionary)
+
+        let saveQuery = queryBuilder.saveQuery(for: configKey, data: data)
+        let status = SecItemAdd(saveQuery as CFDictionary, nil)
+
         if status != errSecSuccess {
             throw KeychainError.unableToSave
         }
     }
     
     func loadAPIConfiguration() throws -> APIConfiguration? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: configKey,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
+        let query = queryBuilder.loadQuery(for: configKey)
+
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
+
         if status == errSecItemNotFound {
             return nil
         }
-        
+
         if status != errSecSuccess {
             throw KeychainError.unableToLoad
         }
-        
+
         guard let data = result as? Data else {
             throw KeychainError.dataCorrupted
         }
-        
+
         let decoder = JSONDecoder()
         return try decoder.decode(APIConfiguration.self, from: data)
     }
     
     func deleteAPIConfiguration() throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: configKey
-        ]
-        
+        let query = queryBuilder.deleteQuery(for: configKey)
         let status = SecItemDelete(query as CFDictionary)
-        
+
         if status != errSecSuccess && status != errSecItemNotFound {
             throw KeychainError.unableToDelete
         }
@@ -99,50 +85,39 @@ class KeychainService {
             try validateAPIKey(openaiConfig.apiKey, for: openaiConfig.provider)
         }
         // Local config doesn't need API key validation
-        
+
         let encoder = JSONEncoder()
         let data = try encoder.encode(configs)
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: providerConfigsKey,
-            kSecValueData as String: data
-        ]
-        
-        SecItemDelete(query as CFDictionary)
-        
-        let status = SecItemAdd(query as CFDictionary, nil)
-        
+
+        let deleteQuery = queryBuilder.deleteQuery(for: providerConfigsKey)
+        SecItemDelete(deleteQuery as CFDictionary)
+
+        let saveQuery = queryBuilder.saveQuery(for: providerConfigsKey, data: data)
+        let status = SecItemAdd(saveQuery as CFDictionary, nil)
+
         if status != errSecSuccess {
             throw KeychainError.unableToSave
         }
     }
     
     func loadProviderConfigurations() throws -> ProviderConfigurations? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: providerConfigsKey,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
+        let query = queryBuilder.loadQuery(for: providerConfigsKey)
+
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
+
         if status == errSecItemNotFound {
             return nil
         }
-        
+
         if status != errSecSuccess {
             throw KeychainError.unableToLoad
         }
-        
+
         guard let data = result as? Data else {
             throw KeychainError.dataCorrupted
         }
-        
+
         let decoder = JSONDecoder()
         return try decoder.decode(ProviderConfigurations.self, from: data)
     }

@@ -40,7 +40,7 @@ enum LocalModelError: LocalizedError {
 // MARK: - Local Model Manager
 
 @MainActor
-class LocalModelManager: ObservableObject {
+class LocalModelManager: ObservableObject, LocalModelManaging {
     static let shared = LocalModelManager()
     
     // MARK: - Published Properties

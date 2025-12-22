@@ -8,15 +8,6 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Scroll Offset Tracking
-
-private struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct SimpleChatView: View {
     let conversation: Conversation
     @StateObject private var viewModel = ChatViewModel()
@@ -46,10 +37,10 @@ struct SimpleChatView: View {
     @State private var showGenerationStats = false
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
-    
-    // Scroll tracking state
-    @State private var scrollViewHeight: CGFloat = 0
-    
+
+    // Scroll to bottom action
+    @State private var performScrollToBottom: (() -> Void)?
+
     // Quick prompts for empty state
     private let quickPrompts = [
         ("💡", "Explain a concept to me"),
@@ -277,345 +268,39 @@ struct SimpleChatView: View {
         .background(Color.theme.chatBackground)
     }
     
+    // MARK: - Message List
+
     private var messagesList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                        let isCurrentlyStreaming = viewModel.isStreaming && message.id == viewModel.messages.last?.id && message.role == Message.Role.assistant
-                        MessageBubbleView(
-                            message: message,
-                            isStreaming: isCurrentlyStreaming,
-                            provider: currentProvider,
-                            streamingContent: isCurrentlyStreaming ? viewModel.streamingMessageContent : nil,
-                            onRetry: message.isFailed ? {
-                                Task {
-                                    await viewModel.retryMessage(message.id)
-                                }
-                            } : nil
-                        )
-                        .id(message.id)
-                        .transition(.asymmetric(
-                            insertion: .push(from: .bottom)
-                                .combined(with: .scale(scale: 0.9, anchor: .bottom))
-                                .combined(with: .opacity)
-                                .animation(.spring(response: 0.35, dampingFraction: 0.85).delay(Double(index) * 0.03)),
-                            removal: .scale(scale: 0.8)
-                                .combined(with: .opacity)
-                                .animation(.spring(response: 0.25, dampingFraction: 0.9))
-                        ))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: message.content)
-                    }
-                    
-                    if viewModel.isLoading && !viewModel.isStreaming {
-                        HStack(spacing: 12) {
-                            HStack(spacing: 10) {
-                                // Animated dots
-                                HStack(spacing: 4) {
-                                    ForEach(0..<3) { index in
-                                        Circle()
-                                            .fill(
-                                                LinearGradient(
-                                                    colors: [.blue.opacity(0.7), .purple.opacity(0.7)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                            .frame(width: 8, height: 8)
-                                            .scaleEffect(viewModel.isLoading ? 1.0 : 0.3)
-                                            .opacity(viewModel.isLoading ? 1.0 : 0.3)
-                                            .animation(
-                                                .spring(response: 0.5, dampingFraction: 0.5)
-                                                .repeatForever()
-                                                .delay(Double(index) * 0.12),
-                                                value: viewModel.isLoading
-                                            )
-                                    }
-                                }
-                                
-                                Text("Thinking...")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .glassEffect(in: .capsule)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .id("loading")
-                        .transition(.asymmetric(
-                            insertion: .push(from: .bottom).combined(with: .opacity),
-                            removal: .scale(scale: 0.8).combined(with: .opacity)
-                        ))
-                    }
-                    
-                    // Bottom anchor for scroll detection
-                    GeometryReader { geometry in
-                        Color.clear
-                            .preference(
-                                key: ScrollOffsetPreferenceKey.self,
-                                value: geometry.frame(in: .named("scrollView")).maxY
-                            )
-                    }
-                    .frame(height: 1)
-                    .id("bottom")
-                }
-                .padding(.vertical, 16)
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.messages.count)
-            }
-            .coordinateSpace(name: "scrollView")
-            .background(
-                GeometryReader { geometry in
-                    Color.clear
-                        .onAppear {
-                            scrollViewHeight = geometry.size.height
-                        }
-                        .onChange(of: geometry.size.height) { _, newValue in
-                            scrollViewHeight = newValue
-                        }
-                }
-            )
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { bottomY in
-                // bottomY is the Y position of the bottom of content relative to scroll view
-                // When at bottom: bottomY ≈ scrollViewHeight
-                // When scrolled up: bottomY > scrollViewHeight
-                let distanceFromBottom = bottomY - scrollViewHeight
-                updateScrollToBottomVisibility(distanceFromBottom: distanceFromBottom)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChangeCompat(of: viewModel.messages.count) { _ in
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    if viewModel.isLoading && !viewModel.isStreaming {
-                        proxy.scrollTo("loading", anchor: .bottom)
-                        showScrollToBottom = false
-                    } else if let lastMessage = viewModel.messages.last {
-                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                        showScrollToBottom = false
-                    }
-                }
-            }
-            .onChange(of: viewModel.streamingMessageContent) { oldValue, newValue in
-                // Auto-scroll while streaming - only if content is growing
-                if viewModel.isStreaming && newValue.count > oldValue.count {
-                    if let lastMessage = viewModel.messages.last {
-                        // Use minimal animation to keep up with fast token generation
-                        withAnimation(.linear(duration: 0.1)) {
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                        }
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isInputFocused = false
-            }
-            .background(
-                // Store proxy reference for scroll to bottom button
-                Color.clear.onAppear {
-                    DispatchQueue.main.async {
-                        // Store the proxy for later use
-                        self.performScrollToBottom = {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                if viewModel.isLoading && !viewModel.isStreaming {
-                                    proxy.scrollTo("loading", anchor: .bottom)
-                                } else if let lastMessage = viewModel.messages.last {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                } else {
-                                    proxy.scrollTo("bottom", anchor: .bottom)
-                                }
-                                showScrollToBottom = false
-                            }
-                        }
-                    }
-                }
-            )
-        }
-        .background(Color.theme.chatBackground)
+        MessageListView(
+            viewModel: viewModel,
+            currentProvider: currentProvider,
+            showScrollToBottom: $showScrollToBottom,
+            scrollToBottomAction: $performScrollToBottom,
+            isInputFocused: $isInputFocused
+        )
     }
-    
-    private func updateScrollToBottomVisibility(distanceFromBottom: CGFloat) {
-        // Don't update while streaming - it interferes with auto-scroll
-        guard !viewModel.isStreaming else { return }
-        guard !viewModel.messages.isEmpty else { return }
-        
-        // Show button when user has scrolled up more than threshold from bottom
-        let threshold: CGFloat = 100
-        let shouldShow = distanceFromBottom > threshold
-        
-        if shouldShow != showScrollToBottom {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                showScrollToBottom = shouldShow
-            }
-        }
-    }
-    
-    @State private var performScrollToBottom: (() -> Void)?
-    
+
     private func scrollToBottom() {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         performScrollToBottom?()
     }
     
+    // MARK: - Input Bar
+
     private var inputBar: some View {
-        VStack(spacing: 0) {
-            // Live streaming stats (for local models while generating)
-            if viewModel.isStreaming && currentProvider == .local && ggufService.isGenerating {
-                HStack {
-                    LocalModelStreamingIndicator(
-                        tokenCount: ggufService.currentTokenCount,
-                        startTime: ggufService.generationStartTime
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(Color(.secondarySystemGroupedBackground).opacity(0.95))
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            // Post-generation stats banner (for local models after completion)
-            else if showGenerationStats, let stats = ggufService.lastGenerationStats, currentProvider == .local {
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.green)
-                    
-                    Text("\(stats.tokenCount) tokens")
-                        .font(.system(size: 12, weight: .medium))
-                    
-                    Text("•")
-                        .foregroundStyle(Color(.tertiaryLabel))
-                    
-                    Text(stats.formattedDuration)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    
-                    Text("•")
-                        .foregroundStyle(Color(.tertiaryLabel))
-                    
-                    Text(stats.formattedSpeed)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.green)
-                    
-                    Spacer()
-                    
-                    // Context usage indicator (compact, in stats banner)
-                    ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .compact)
-                    
-                    Button(action: {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showGenerationStats = false
-                        }
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(.secondarySystemGroupedBackground))
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            // Context usage indicator (when not streaming/showing stats but has messages)
-            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 {
-                ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .full)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .transition(.opacity)
-            }
-            
-            // Pending attachments preview
-            if !pendingAttachments.isEmpty {
-                PendingAttachmentPreview(attachments: pendingAttachments) { attachment in
-                    pendingAttachments.removeAll { $0.id == attachment.id }
-                }
-            }
-
-            // Modern pill-shaped input container
-            HStack(spacing: 12) {
-                // Text input container with embedded send button
-                HStack(spacing: 8) {
-                    // + button for attachments - NOW FUNCTIONAL
-                    Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                        showAttachmentOptions = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.blue)
-                            .frame(width: 24, height: 24)
-                    }
-                    .disabled(viewModel.isLoading || viewModel.isStreaming)
-
-                    TextField("Message", text: $messageText, axis: .vertical)
-                        .font(.body)
-                        .lineLimit(1...6)
-                        .textFieldStyle(.plain)
-                        .focused($isInputFocused)
-                        .disabled(viewModel.isLoading || viewModel.isStreaming)
-                        .onSubmit {
-                            if canSendMessage && !viewModel.isStreaming {
-                                sendMessage()
-                            }
-                        }
-
-                    // Embedded send button
-                    Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
-
-                        if viewModel.isStreaming {
-                            viewModel.stopStreaming()
-                        } else {
-                            sendMessage()
-                        }
-                    }) {
-                        Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(
-                                viewModel.isStreaming ? .red :
-                                canSendMessage ? .blue : .secondary
-                            )
-                            .scaleEffect(canSendMessage || viewModel.isStreaming ? 1.0 : 0.8)
-                            .rotationEffect(.degrees(viewModel.isStreaming ? 90 : 0))
-                    }
-                    .disabled(!canSendMessage && !viewModel.isStreaming)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: canSendMessage)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isStreaming)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .glassEffect(in: .rect(cornerRadius: 22))
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-        }
-        .background(Color.theme.chatBackground.opacity(0.95))
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 0)
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
-    }
-
-    private var canSendMessage: Bool {
-        let hasText = !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasAttachments = !pendingAttachments.isEmpty
-        let hasContent = hasText || hasAttachments
-        let notBusy = !viewModel.isLoading && !viewModel.isStreaming
-        
-        // For local models, also check if model is loaded and not currently loading
-        if currentProvider == .local {
-            let modelReady = ggufService.isModelLoaded && !ggufService.isLoading
-            return hasContent && notBusy && modelReady
-        }
-        
-        return hasContent && notBusy
+        ChatInputBar(
+            viewModel: viewModel,
+            ggufService: ggufService,
+            contextTracker: contextTracker,
+            messageText: $messageText,
+            pendingAttachments: $pendingAttachments,
+            showAttachmentOptions: $showAttachmentOptions,
+            showGenerationStats: $showGenerationStats,
+            isInputFocused: $isInputFocused,
+            currentProvider: currentProvider,
+            onSendMessage: sendMessage
+        )
     }
     
     // MARK: - Main Content View (extracted to reduce body complexity)
@@ -1025,180 +710,6 @@ struct SimpleChatView: View {
             exportErrorMessage = "Failed to save file: \(error.localizedDescription)"
             showExportError = true
         }
-    }
-}
-
-// MARK: - Local Model Streaming Indicator
-
-struct LocalModelStreamingIndicator: View {
-    let tokenCount: Int
-    let startTime: Date?
-    
-    @State private var isPulsing = false
-    
-    private var elapsedTime: TimeInterval {
-        guard let start = startTime else { return 0 }
-        return Date().timeIntervalSince(start)
-    }
-    
-    private var tokensPerSecond: Double {
-        guard elapsedTime > 0.5 else { return 0 } // Wait a bit before showing speed
-        return Double(tokenCount) / elapsedTime
-    }
-    
-    var body: some View {
-        HStack(spacing: 10) {
-            // Pulsing indicator - uses its own state, not tokenCount
-            Circle()
-                .fill(.green)
-                .frame(width: 8, height: 8)
-                .scaleEffect(isPulsing ? 1.2 : 0.8)
-                .opacity(isPulsing ? 1.0 : 0.6)
-            
-            Text("\(tokenCount)")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.primary)
-                .monospacedDigit()
-            
-            Text("tokens")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            
-            if tokensPerSecond > 0 {
-                Text("•")
-                    .foregroundStyle(Color(.tertiaryLabel))
-                
-                Text(String(format: "%.1f tok/s", tokensPerSecond))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.green)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(Color.green.opacity(0.2), lineWidth: 1)
-                )
-        )
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                isPulsing = true
-            }
-        }
-    }
-}
-
-// MARK: - Context Usage Indicator
-
-struct ContextUsageIndicator: View {
-    let usageInfo: ContextUsageInfo
-    var style: Style = .full
-    
-    enum Style {
-        case full       // Shows full info with progress bar
-        case compact    // Just percentage badge
-    }
-    
-    private var progressColor: Color {
-        if usageInfo.isAtLimit {
-            return .red
-        } else if usageInfo.isNearLimit {
-            return .orange
-        } else {
-            return .blue
-        }
-    }
-    
-    private var statusIcon: String {
-        if usageInfo.isAtLimit {
-            return "exclamationmark.triangle.fill"
-        } else if usageInfo.isNearLimit {
-            return "exclamationmark.circle.fill"
-        } else {
-            return "circle.dotted"
-        }
-    }
-    
-    var body: some View {
-        switch style {
-        case .full:
-            fullIndicator
-        case .compact:
-            compactIndicator
-        }
-    }
-    
-    private var fullIndicator: some View {
-        HStack(spacing: 10) {
-            // Icon
-            Image(systemName: statusIcon)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(progressColor)
-            
-            // Progress bar with text
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("Context")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    
-                    Spacer()
-                    
-                    Text(usageInfo.formattedUsage)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.primary)
-                }
-                
-                // Progress bar
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        // Background
-                        Capsule()
-                            .fill(Color(.systemGray5))
-                            .frame(height: 4)
-                        
-                        // Fill
-                        Capsule()
-                            .fill(progressColor)
-                            .frame(width: max(0, geometry.size.width * usageInfo.usagePercentage / 100), height: 4)
-                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: usageInfo.usagePercentage)
-                    }
-                }
-                .frame(height: 4)
-            }
-            .frame(maxWidth: 160)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(progressColor.opacity(usageInfo.isNearLimit ? 0.3 : 0.1), lineWidth: 1)
-                )
-        )
-    }
-    
-    private var compactIndicator: some View {
-        HStack(spacing: 4) {
-            Image(systemName: statusIcon)
-                .font(.system(size: 10, weight: .medium))
-            
-            Text(usageInfo.compactUsage)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-        }
-        .foregroundStyle(progressColor)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(progressColor.opacity(0.1))
-        )
     }
 }
 

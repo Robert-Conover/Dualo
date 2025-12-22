@@ -61,7 +61,7 @@ struct GenerationStats {
 // MARK: - GGUF Service
 
 @MainActor
-class GGUFService: ObservableObject {
+class GGUFService: ObservableObject, GGUFServicing {
     static let shared = GGUFService()
     
     // MARK: - Published Properties
@@ -87,6 +87,11 @@ class GGUFService: ObservableObject {
     private var loadedModelPath: URL?
     private var loadedModelTemplate: Template?
     private var loadedModelContextSize: Int32 = 4096
+
+    /// Cached regex for stripping thinking blocks (compiled once for performance)
+    private static let thinkingBlockRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: "<think>[\\s\\S]*?</think>", options: [])
+    }()
     
     /// Track which conversation the LLM is currently serving
     /// When this changes, we need to reset context for the new conversation
@@ -430,9 +435,8 @@ class GGUFService: ObservableObject {
     /// Remove <think>...</think> blocks from content
     /// These are the model's internal reasoning and shouldn't be included in history
     nonisolated private func stripThinkingBlocks(from content: String) -> String {
-        // Pattern matches <think>...</think> including newlines
-        let pattern = "<think>[\\s\\S]*?</think>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        // Use cached regex for performance (avoid recompiling on every call)
+        guard let regex = Self.thinkingBlockRegex else {
             return content
         }
         let range = NSRange(content.startIndex..., in: content)
