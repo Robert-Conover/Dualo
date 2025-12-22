@@ -19,6 +19,25 @@ class ConversationManager: ObservableObject {
     @Published var conversations: [Conversation] = []
     @Published var currentConversation: Conversation?
     @Published private(set) var isLoading = true
+    @Published private(set) var storageError: StorageError?
+
+    /// Storage errors that can occur during file operations
+    enum StorageError: LocalizedError {
+        case directoryCreationFailed(String)
+        case saveFailed(UUID, String)
+        case loadFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .directoryCreationFailed(let details):
+                return "Failed to create storage directory: \(details)"
+            case .saveFailed(let id, let details):
+                return "Failed to save conversation \(id.uuidString.prefix(8)): \(details)"
+            case .loadFailed(let details):
+                return "Failed to load conversations: \(details)"
+            }
+        }
+    }
     
     /// Transient storage for initial message + attachments when starting a new chat from HomeView.
     /// SimpleChatView reads and clears this on appear.
@@ -52,8 +71,19 @@ class ConversationManager: ObservableObject {
     }
     
     private func ensureDirectoriesExist() {
-        try? fileManager.createDirectory(at: conversationsDirectory, withIntermediateDirectories: true)
-        try? fileManager.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: conversationsDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("ConversationManager: CRITICAL - Failed to create conversations directory: \(error.localizedDescription)")
+            storageError = .directoryCreationFailed(error.localizedDescription)
+        }
+
+        do {
+            try fileManager.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("ConversationManager: CRITICAL - Failed to create attachments directory: \(error.localizedDescription)")
+            storageError = .directoryCreationFailed(error.localizedDescription)
+        }
     }
     
     // MARK: - Async Loading
@@ -163,12 +193,21 @@ class ConversationManager: ObservableObject {
         
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        
+
+        var migrationErrors: [String] = []
         for conversation in legacyConversations {
             let fileURL = directory.appendingPathComponent("\(conversation.id.uuidString).json")
-            if let encodedData = try? encoder.encode(conversation) {
-                try? encodedData.write(to: fileURL, options: .atomic)
+            do {
+                let encodedData = try encoder.encode(conversation)
+                try encodedData.write(to: fileURL, options: .atomic)
+            } catch {
+                migrationErrors.append("Conversation \(conversation.id.uuidString.prefix(8)): \(error.localizedDescription)")
             }
+        }
+
+        if !migrationErrors.isEmpty {
+            print("ConversationManager: Migration errors occurred:")
+            migrationErrors.forEach { print("  - \($0)") }
         }
         
         // Remove from UserDefaults after successful migration
@@ -183,22 +222,26 @@ class ConversationManager: ObservableObject {
     /// Synchronous load helper - runs on background queue
     private static func loadConversationsSync(directory: URL) -> [Conversation] {
         var loadedConversations: [Conversation] = []
-        
+
         do {
             let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             let jsonFiles = files.filter { $0.pathExtension == "json" }
-            
+
             let decoder = JSONDecoder()
             for fileURL in jsonFiles {
-                if let data = try? Data(contentsOf: fileURL),
-                   let conversation = try? decoder.decode(Conversation.self, from: data) {
+                do {
+                    let data = try Data(contentsOf: fileURL)
+                    let conversation = try decoder.decode(Conversation.self, from: data)
                     loadedConversations.append(conversation)
+                } catch {
+                    print("ConversationManager: Failed to load \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    // Continue loading other files - don't let one corrupt file break everything
                 }
             }
         } catch {
-            print("ConversationManager: Error loading conversations: \(error)")
+            print("ConversationManager: Error reading conversations directory: \(error.localizedDescription)")
         }
-        
+
         return loadedConversations
     }
     
@@ -306,12 +349,17 @@ class ConversationManager: ObservableObject {
         let conversationIds = conversations.map { $0.id }
         conversations = []
         currentConversation = nil
-        
+
         for id in conversationIds {
             deleteConversationFileAsync(id)
         }
-        
+
         saveCurrentConversationID()
+    }
+
+    /// Clear the current storage error (call after displaying to user)
+    func clearStorageError() {
+        storageError = nil
     }
     
     // MARK: - Async File Operations
@@ -319,27 +367,38 @@ class ConversationManager: ObservableObject {
     private func saveConversationAsync(_ conversation: Conversation) {
         let directory = conversationsDirectory
         let conversationCopy = conversation
-        
-        fileQueue.async {
+
+        fileQueue.async { [weak self] in
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let fileURL = directory.appendingPathComponent("\(conversationCopy.id.uuidString).json")
-            
+
             do {
                 let data = try encoder.encode(conversationCopy)
                 try data.write(to: fileURL, options: .atomic)
             } catch {
-                print("ConversationManager: Error saving conversation \(conversationCopy.id): \(error)")
+                print("ConversationManager: Error saving conversation \(conversationCopy.id.uuidString.prefix(8)): \(error.localizedDescription)")
+                // Report save failure to UI on main thread
+                DispatchQueue.main.async {
+                    self?.storageError = .saveFailed(conversationCopy.id, error.localizedDescription)
+                }
             }
         }
     }
     
     private func deleteConversationFileAsync(_ conversationId: UUID) {
         let directory = conversationsDirectory
-        
+
         fileQueue.async {
             let fileURL = directory.appendingPathComponent("\(conversationId.uuidString).json")
-            try? FileManager.default.removeItem(at: fileURL)
+            do {
+                try FileManager.default.removeItem(at: fileURL)
+            } catch let error as NSError {
+                // Ignore "file not found" errors (already deleted or never saved)
+                if error.domain != NSCocoaErrorDomain || error.code != NSFileNoSuchFileError {
+                    print("ConversationManager: Failed to delete \(conversationId.uuidString.prefix(8)): \(error.localizedDescription)")
+                }
+            }
         }
     }
     
