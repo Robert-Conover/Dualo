@@ -179,7 +179,7 @@ class ConversationManager: ObservableObject {
     }
     
     /// Synchronous migration helper - runs on background queue
-    private static func performMigrationSync(legacyKey: String, directory: URL) -> [Conversation] {
+    nonisolated private static func performMigrationSync(legacyKey: String, directory: URL) -> [Conversation] {
         guard let data = UserDefaults.standard.data(forKey: legacyKey) else {
             return []
         }
@@ -220,7 +220,7 @@ class ConversationManager: ObservableObject {
     }
     
     /// Synchronous load helper - runs on background queue
-    private static func loadConversationsSync(directory: URL) -> [Conversation] {
+    nonisolated private static func loadConversationsSync(directory: URL) -> [Conversation] {
         var loadedConversations: [Conversation] = []
 
         do {
