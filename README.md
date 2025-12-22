@@ -85,36 +85,68 @@ Images are uploaded as base64 to the selected provider using that provider’s m
 Dualo/
 ├── DualoApp.swift                 # App entry point
 ├── Constants.swift                # App-wide constants / strings
+├── DI/
+│   └── DependencyContainer.swift  # Dependency injection container
 ├── Models/
 │   ├── APIConfiguration.swift     # Provider configs (Anthropic/OpenAI/Local)
 │   ├── Conversation.swift         # Conversation model (provider + model per chat)
 │   ├── Message.swift              # Message model + image attachments
 │   └── LocalModel.swift           # GGUF catalog + template types
+├── Protocols/
+│   └── ServiceProtocols.swift     # Service protocol definitions
 ├── Services/
 │   ├── APIService.swift           # Cloud API calls + SSE streaming (+ image payloads)
-│   ├── GGUFService.swift          # Local inference via LLM.swift
-│   ├── LocalModelManager.swift    # Download/delete local GGUF models
-│   ├── ConversationManager.swift  # File-based persistence + migrations
 │   ├── ChatExportService.swift    # PDF/Markdown/Text export
+│   ├── ContextTracker.swift       # Context window usage tracking
+│   ├── ConversationManager.swift  # File-based persistence + migrations
+│   ├── GGUFService.swift          # Local inference via LLM.swift
+│   ├── HTTPErrorHandler.swift     # HTTP error parsing + handling
+│   ├── ImagePickerService.swift   # Photo library + camera access
+│   ├── KeychainQueryBuilder.swift # Keychain query construction
 │   ├── KeychainService.swift      # Keychain storage (per-provider configs)
-│   └── MessageContentRenderer.swift # Markdown parsing + code block detection
+│   ├── LocalModelManager.swift    # Download/delete local GGUF models
+│   ├── MessageContentRenderer.swift # Markdown parsing + code block detection
+│   ├── ModelUtilities.swift       # Model-related utility functions
+│   ├── NetworkError.swift         # Network error types
+│   └── MessageFormatters/
+│       ├── AnthropicMessageFormatter.swift
+│       ├── MessageFormatterProtocol.swift
+│       └── OpenAIMessageFormatter.swift
+├── Utilities/
+│   └── HapticFeedback.swift       # Haptic feedback utilities
 ├── ViewModels/
 │   └── ChatViewModel.swift        # Send/stream/stop + persistence throttling
 ├── Views/
-│   ├── HomeView.swift             # Home screen + model picker + composer
-│   ├── SimpleChatView.swift       # Chat UI + per-chat model switching + export
+│   ├── Chat/
+│   │   ├── ChatInputBar.swift     # Message input + attachments
+│   │   └── MessageListView.swift  # Scrollable message list
+│   ├── CodeBlockView.swift        # Monospace code blocks + copy
+│   ├── Components/
+│   │   ├── ContextUsageIndicator.swift   # Context window usage UI
+│   │   ├── ImageAttachmentView.swift     # Inline + fullscreen image viewer
+│   │   └── LocalModelStreamingIndicator.swift # Local model streaming status
 │   ├── ConversationsSheetView.swift # Search/rename/delete conversations
-│   ├── SettingsView.swift         # Cloud + On-device settings
+│   ├── HomeView.swift             # Home screen + model picker + composer
 │   ├── LocalModelsView.swift      # Local model download management UI
+│   ├── MainTabView.swift          # Tab-based navigation
 │   ├── MessageBubbleView.swift    # Bubble rendering + attachments
 │   ├── MessageContentView.swift   # Markdown + code blocks
-│   └── CodeBlockView.swift        # Monospace code blocks + copy
-├── Extensions/
-│   ├── Color+Theme.swift
-│   ├── View+Extensions.swift
-│   └── Compatibility+Extensions.swift
-└── Views/Components/
-    └── ImageAttachmentView.swift  # Inline + fullscreen image viewer
+│   ├── Settings/
+│   │   ├── APIKeyInputView.swift
+│   │   ├── ModelSelectionCardView.swift
+│   │   ├── OnDeviceSettingsView.swift
+│   │   ├── ProviderCardView.swift
+│   │   ├── ResourcesCardView.swift
+│   │   ├── SettingsModeToggle.swift
+│   │   └── TestConnectionButtonView.swift
+│   ├── SettingsView.swift         # Cloud + On-device settings
+│   ├── SimpleChatView.swift       # Chat UI + per-chat model switching + export
+│   ├── ThinkingBlockView.swift    # AI thinking/reasoning display
+│   └── ToastView.swift            # Toast notification popups
+└── Extensions/
+    ├── Color+Theme.swift
+    ├── Compatibility+Extensions.swift
+    └── View+Extensions.swift
 ```
 
 ## Built-in model lists
