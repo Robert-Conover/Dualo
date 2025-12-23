@@ -101,18 +101,18 @@ struct LocalModelCatalog {
             downloadState: .notDownloaded
         ),
         
-        // MARK: - Google Gemma 3 (Latest)
+        // MARK: - Google Gemma 3 QAT (Quantization-Aware Training)
         LocalModel(
-            id: "gemma-3-4b-q4",
-            displayName: "Gemma 3 4B",
-            huggingFaceRepo: "bartowski/google_gemma-3-4b-it-GGUF",
-            ggufFileName: "google_gemma-3-4b-it-Q4_K_M.gguf",
-            sizeBytes: 2_800_000_000, // ~2.8GB
-            description: "Google's Gemma 3 4B (Dec 2024). State-of-the-art for its size. Requires 8GB+ RAM.",
+            id: "gemma-3-4b-qat-q4",
+            displayName: "Gemma 3 QAT 4B",
+            huggingFaceRepo: "unsloth/gemma-3-4b-it-qat-GGUF",
+            ggufFileName: "gemma-3-4b-it-qat-Q4_K_M.gguf",
+            sizeBytes: 2_940_000_000, // ~2.94GB
+            description: "Google's Gemma 3 4B with QAT (2025). Optimized for on-device inference with 128K context. Requires 8GB+ RAM.",
             recommended: false,
             minRAMGB: 8,
             templateType: .gemma,
-            contextSize: 8_192, // 8K context
+            contextSize: 131_072, // 128K context
             downloadState: .notDownloaded
         ),
         
@@ -184,21 +184,6 @@ struct LocalModelCatalog {
             minRAMGB: 6,
             templateType: .chatML,
             contextSize: 16_384, // 16K context
-            downloadState: .notDownloaded
-        ),
-        
-        // MARK: - Google Gemma 2 (Older but stable)
-        LocalModel(
-            id: "gemma-2-2b-q4",
-            displayName: "Gemma 2 2B",
-            huggingFaceRepo: "bartowski/gemma-2-2b-it-GGUF",
-            ggufFileName: "gemma-2-2b-it-Q4_K_M.gguf",
-            sizeBytes: 1_700_000_000, // ~1.7GB
-            description: "Google's Gemma 2 instruction-tuned model. Stable and reliable. Requires 6GB+ RAM.",
-            recommended: false,
-            minRAMGB: 6,
-            templateType: .gemma,
-            contextSize: 8_192, // 8K context
             downloadState: .notDownloaded
         )
     ]
