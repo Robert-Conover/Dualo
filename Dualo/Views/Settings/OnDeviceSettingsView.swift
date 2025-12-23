@@ -14,9 +14,6 @@ struct OnDeviceSettingsView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            // Storage overview card
-            storageCard
-
             // Models list
             modelsListCard
 
@@ -27,68 +24,6 @@ struct OnDeviceSettingsView: View {
             insertion: .move(edge: .trailing).combined(with: .opacity),
             removal: .move(edge: .leading).combined(with: .opacity)
         ))
-    }
-
-    // MARK: - Storage Card
-
-    private var storageCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Label("Storage", systemImage: "internaldrive")
-                    .font(.headline)
-
-                Spacer()
-
-                Text("\(localModelManager.formattedStorageUsed) / \(localModelManager.formattedTotalStorage)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Progress bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(.systemGray5))
-                        .frame(height: 8)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(
-                            LinearGradient(
-                                colors: [.green, .mint],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: storageBarWidth(in: geometry.size.width), height: 8)
-                }
-            }
-            .frame(height: 8)
-
-            HStack {
-                Text("\(localModelManager.downloadedModels.count) model\(localModelManager.downloadedModels.count == 1 ? "" : "s") downloaded")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text("\(localModelManager.formattedAvailableStorage) available")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
-    }
-
-    private func storageBarWidth(in totalWidth: CGFloat) -> CGFloat {
-        let used = localModelManager.calculateStorageUsed()
-        let total = DeviceCapability.totalStorageBytes
-        guard total > 0 else { return 0 }
-        let percentage = CGFloat(used) / CGFloat(total)
-        return min(totalWidth * percentage, totalWidth)
     }
 
     // MARK: - Models List Card

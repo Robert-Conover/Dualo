@@ -219,15 +219,4 @@ struct DeviceCapability {
             return 0
         }
     }
-    
-    /// Total storage space in bytes
-    static var totalStorageBytes: Int64 {
-        do {
-            let fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let values = try fileURL.resourceValues(forKeys: [.volumeTotalCapacityKey])
-            return Int64(values.volumeTotalCapacity ?? 0)
-        } catch {
-            return 0
-        }
-    }
 }

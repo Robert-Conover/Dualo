@@ -70,15 +70,12 @@ protocol LocalModelManaging: AnyObject {
     var errorMessage: String? { get }
     var selectedModelId: String? { get set }
     var selectedModel: LocalModel? { get }
-    var formattedStorageUsed: String { get }
-    var formattedAvailableStorage: String { get }
 
     func getModelLocalPath(_ modelId: String) -> URL?
     func downloadModel(_ model: LocalModel) async throws
     func cancelDownload(_ modelId: String)
     func deleteModel(_ model: LocalModel) throws
     func importModel(from sourceURL: URL) throws -> LocalModel
-    func calculateStorageUsed() -> Int64
     func getModelSizeString(_ model: LocalModel) -> String
 }
 

@@ -18,9 +18,6 @@ struct LocalModelsView: View {
     
     var body: some View {
         List {
-            // Storage info section
-            storageSection
-            
             // Available models section
             modelsSection
         }
@@ -44,66 +41,6 @@ struct LocalModelsView: View {
         } message: {
             Text(downloadError ?? "An unknown error occurred")
         }
-    }
-    
-    // MARK: - Storage Section
-    
-    private var storageSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label("Storage", systemImage: SystemImages.internaldrive)
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    Text("\(modelManager.formattedStorageUsed) / \(modelManager.formattedTotalStorage)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                
-                // Storage progress bar
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(.systemGray5))
-                            .frame(height: 8)
-                        
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(
-                                LinearGradient(
-                                    colors: [.blue, .cyan],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: storageBarWidth(in: geometry.size.width), height: 8)
-                    }
-                }
-                .frame(height: 8)
-                
-                HStack {
-                    Text("\(modelManager.downloadedModels.count) model\(modelManager.downloadedModels.count == 1 ? "" : "s") downloaded")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    
-                    Spacer()
-                    
-                    Text("\(modelManager.formattedAvailableStorage) available")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 8)
-        }
-    }
-    
-    private func storageBarWidth(in totalWidth: CGFloat) -> CGFloat {
-        let used = modelManager.calculateStorageUsed()
-        let total = DeviceCapability.totalStorageBytes
-        guard total > 0 else { return 0 }
-        let percentage = CGFloat(used) / CGFloat(total)
-        return min(totalWidth * percentage, totalWidth)
     }
     
     // MARK: - Models Section

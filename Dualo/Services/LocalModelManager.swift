@@ -232,21 +232,6 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
         return getModelLocalPath(modelId)
     }
     
-    /// Calculate total storage used by downloaded models
-    func calculateStorageUsed() -> Int64 {
-        var totalSize: Int64 = 0
-        
-        for model in downloadedModels {
-            if let path = getModelLocalPath(model.id) {
-                totalSize += fileSize(at: path)
-            } else {
-                totalSize += model.sizeBytes
-            }
-        }
-        
-        return totalSize
-    }
-    
     private func fileSize(at url: URL) -> Int64 {
         do {
             let resourceValues = try url.resourceValues(forKeys: [.fileSizeKey])
@@ -254,21 +239,6 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
         } catch {
             return 0
         }
-    }
-    
-    /// Formatted storage used string
-    var formattedStorageUsed: String {
-        ByteCountFormatter.string(fromByteCount: calculateStorageUsed(), countStyle: .file)
-    }
-    
-    /// Formatted available storage string
-    var formattedAvailableStorage: String {
-        ByteCountFormatter.string(fromByteCount: DeviceCapability.availableStorageBytes, countStyle: .file)
-    }
-    
-    /// Formatted total storage string
-    var formattedTotalStorage: String {
-        ByteCountFormatter.string(fromByteCount: DeviceCapability.totalStorageBytes, countStyle: .file)
     }
     
     /// Get the actual size of a downloaded model on disk
