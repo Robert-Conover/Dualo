@@ -88,12 +88,8 @@ struct ThemeColors {
         )
     }
     
-    /// Segmented control background
-    let segmentedBackground = Color.white.opacity(0.15)
-    let segmentedSelected = Color.white.opacity(0.25)
-    
-    /// Sheet background
-    let sheetBackground = Color(red: 0.11, green: 0.11, blue: 0.12)
+    /// Sheet background - uses system color for Light/Dark mode adaptation
+    let sheetBackground = Color(.systemGroupedBackground)
 }
 
 // MARK: - Convenience Extensions

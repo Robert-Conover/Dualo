@@ -16,18 +16,18 @@ struct ToastView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             
             Text(message)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background {
             Capsule()
-                .fill(.black.opacity(0.85))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .fill(.ultraThinMaterial)
+                .shadow(color: Color(.systemFill), radius: 8, x: 0, y: 4)
         }
         .scaleEffect(isShowing ? 1 : 0.8)
         .opacity(isShowing ? 1 : 0)
