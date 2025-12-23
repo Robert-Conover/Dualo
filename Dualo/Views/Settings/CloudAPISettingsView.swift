@@ -2,44 +2,23 @@
 //  CloudAPISettingsView.swift
 //  Dualo
 //
-//  Cloud API provider configuration view.
+//  Cloud API provider API key configuration view.
 //
 
 import SwiftUI
 
 struct CloudAPISettingsView: View {
-    @ObservedObject var viewModel: ChatViewModel
-    
-    // Cloud AI state
+    // State for which provider's config we're viewing/editing
     @State private var selectedProvider: APIProvider = .anthropic
     @State private var apiKeys: [APIProvider: String] = [:]
-    @State private var selectedModels: [APIProvider: String] = [:]
-    @State private var showingSaveConfirmation = false
     @State private var saveError: String?
     @State private var debounceTask: Task<Void, Never>?
-    @State private var providerConfigs = ProviderConfigurations()
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
-    @FocusState private var isInputFocused: Bool
     @State private var apiKeyValidationErrors: [APIProvider: String] = [:]
     
     private var currentAPIKey: String {
-        get { apiKeys[selectedProvider] ?? "" }
-        set { apiKeys[selectedProvider] = newValue }
-    }
-    
-    private var currentSelectedModel: String {
-        get { selectedModels[selectedProvider] ?? selectedProvider.defaultModel }
-        set { selectedModels[selectedProvider] = newValue }
-    }
-    
-    private var currentModelDisplayText: String {
-        let model = selectedModels[selectedProvider] ?? ""
-        return model.isEmpty ? "Select Model" : model
-    }
-    
-    private var currentAvailableModels: [String] {
-        return selectedProvider.availableModels
+        apiKeys[selectedProvider] ?? ""
     }
     
     private var apiKeyBinding: Binding<String> {
@@ -49,31 +28,14 @@ struct CloudAPISettingsView: View {
         )
     }
     
-    private var modelSelectionBinding: Binding<String> {
-        Binding(
-            get: { self.selectedModels[self.selectedProvider] ?? self.selectedProvider.defaultModel },
-            set: { self.selectedModels[self.selectedProvider] = $0 }
-        )
-    }
-    
-    private var modelSelectionView: some View {
-        CloudModelSelectionView(
-            availableModels: currentAvailableModels,
-            selectedModel: modelSelectionBinding,
-            onSelectionChange: handleModelSelectionChange
-        )
-    }
-    
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 // Provider Cards
                 providerCardsSection
                 
-                // Selected provider configuration
-                if !currentAPIKey.isEmpty || selectedProvider == .anthropic || selectedProvider == .openai {
-                    selectedProviderConfig
-                }
+                // API Key configuration
+                apiKeyConfigSection
                 
                 // Links section
                 ResourcesCardView(provider: selectedProvider)
@@ -86,15 +48,7 @@ struct CloudAPISettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .scrollDismissesKeyboard(.interactively)
         .onAppear {
-            loadCurrentConfiguration()
-        }
-        .alert("Configuration Saved", isPresented: $showingSaveConfirmation) {
-            Button("OK") {
-                let successFeedback = UINotificationFeedbackGenerator()
-                successFeedback.notificationOccurred(.success)
-            }
-        } message: {
-            Text("Your API configuration has been saved successfully.")
+            loadAPIKeys()
         }
         .alert("Error", isPresented: .constant(saveError != nil)) {
             Button("OK") {
@@ -119,7 +73,7 @@ struct CloudAPISettingsView: View {
                 ProviderCardView(
                     provider: .anthropic,
                     isSelected: selectedProvider == .anthropic,
-                    hasKey: !(apiKeys[.anthropic] ?? "").isEmpty,
+                    hasKey: isAPIKeyValid(apiKeys[.anthropic] ?? "", for: .anthropic),
                     onSelect: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             selectedProvider = .anthropic
@@ -131,7 +85,7 @@ struct CloudAPISettingsView: View {
                 ProviderCardView(
                     provider: .openai,
                     isSelected: selectedProvider == .openai,
-                    hasKey: !(apiKeys[.openai] ?? "").isEmpty,
+                    hasKey: isAPIKeyValid(apiKeys[.openai] ?? "", for: .openai),
                     onSelect: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             selectedProvider = .openai
@@ -143,9 +97,9 @@ struct CloudAPISettingsView: View {
         }
     }
     
-    // MARK: - Selected Provider Configuration
+    // MARK: - API Key Configuration
     
-    private var selectedProviderConfig: some View {
+    private var apiKeyConfigSection: some View {
         VStack(spacing: 16) {
             // API Key Card
             APIKeyInputView(
@@ -153,13 +107,6 @@ struct CloudAPISettingsView: View {
                 apiKey: apiKeyBinding,
                 validationError: apiKeyValidationErrors[selectedProvider],
                 onKeyChange: handleAPIKeyChange
-            )
-            
-            // Model Selection Card
-            ModelSelectionCardView(
-                currentModel: currentModelDisplayText,
-                isAPIKeyEmpty: currentAPIKey.isEmpty,
-                modelSelectionView: AnyView(modelSelectionView)
             )
             
             // Test Connection Button
@@ -181,13 +128,6 @@ struct CloudAPISettingsView: View {
     
     // MARK: - Helper Functions
     
-    private func handleModelSelectionChange(_ newModel: String) {
-        selectedModels[selectedProvider] = newModel
-        autoSaveConfiguration()
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
-    }
-    
     private func handleAPIKeyChange(_ newKey: String) {
         debounceTask?.cancel()
         connectionTestResult = nil
@@ -203,7 +143,7 @@ struct CloudAPISettingsView: View {
                 try await Task.sleep(nanoseconds: 500_000_000)
                 
                 if !Task.isCancelled {
-                    autoSaveConfiguration()
+                    saveAPIKey()
                 }
             } catch {
                 // Task was cancelled
@@ -217,93 +157,66 @@ struct CloudAPISettingsView: View {
         
         connectionTestResult = nil
         
+        // Validate the new provider's API key for display purposes
         let newKey = apiKeys[newProvider] ?? ""
         if let error = validateAPIKeyFormat(newKey, for: newProvider) {
             apiKeyValidationErrors[newProvider] = error
         } else {
             apiKeyValidationErrors[newProvider] = nil
         }
-        
-        if selectedModels[newProvider] == nil {
-            selectedModels[newProvider] = newProvider.defaultModel
-        }
-        
-        autoSaveConfiguration()
     }
     
-    private func loadCurrentConfiguration() {
+    private func loadAPIKeys() {
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                providerConfigs = configs
-                selectedProvider = configs.selectedProvider
-                
                 if let anthropicConfig = configs.anthropic {
                     apiKeys[.anthropic] = anthropicConfig.apiKey
-                    selectedModels[.anthropic] = anthropicConfig.model
                 }
                 
                 if let openaiConfig = configs.openai {
                     apiKeys[.openai] = openaiConfig.apiKey
-                    selectedModels[.openai] = openaiConfig.model
-                }
-                
-                if let currentConfig = configs.currentConfiguration() {
-                    viewModel.apiConfiguration = currentConfig
-                }
-            } else if let legacyConfig = viewModel.apiConfiguration {
-                selectedProvider = legacyConfig.provider
-                apiKeys[legacyConfig.provider] = legacyConfig.apiKey
-                selectedModels[legacyConfig.provider] = legacyConfig.model
-                
-                providerConfigs.selectedProvider = legacyConfig.provider
-                providerConfigs.setConfiguration(legacyConfig)
-                
-                try KeychainService.shared.saveProviderConfigurations(providerConfigs)
-            }
-            
-            for provider in APIProvider.allCases {
-                if selectedModels[provider] == nil {
-                    selectedModels[provider] = provider.defaultModel
                 }
             }
         } catch {
-            print("Failed to load configurations: \(error)")
-            for provider in APIProvider.allCases {
-                selectedModels[provider] = provider.defaultModel
-            }
+            print("Failed to load API keys: \(error)")
         }
     }
     
-    private func autoSaveConfiguration() {
+    private func saveAPIKey() {
         let apiKey = apiKeys[selectedProvider] ?? ""
-        let config = APIConfiguration(
-            provider: selectedProvider,
-            apiKey: apiKey,
-            model: selectedModels[selectedProvider] ?? selectedProvider.defaultModel
-        )
         
-        let shouldSave = apiKey.isEmpty || isAPIKeyReasonablyComplete(apiKey, for: selectedProvider)
+        // Only save if the key is empty (clearing) or valid
+        guard apiKey.isEmpty || isAPIKeyValid(apiKey, for: selectedProvider) else { return }
         
-        if shouldSave {
-            do {
-                providerConfigs.setConfiguration(config)
-                try KeychainService.shared.saveProviderConfigurations(providerConfigs)
-                viewModel.apiConfiguration = config
-                if saveError != nil {
-                    saveError = nil
-                }
-            } catch {
-                saveError = "Failed to auto-save configuration: \(error.localizedDescription)"
+        do {
+            var configs = try KeychainService.shared.loadProviderConfigurations() ?? ProviderConfigurations()
+            
+            // Get existing config for this provider or create new one with default model
+            let existingConfig = selectedProvider == .anthropic ? configs.anthropic : configs.openai
+            let model = existingConfig?.model ?? selectedProvider.defaultModel
+            
+            let config = APIConfiguration(
+                provider: selectedProvider,
+                apiKey: apiKey,
+                model: model
+            )
+            
+            configs.setConfiguration(config)
+            try KeychainService.shared.saveProviderConfigurations(configs)
+            
+            if saveError != nil {
+                saveError = nil
             }
+        } catch {
+            saveError = "Failed to save API key: \(error.localizedDescription)"
         }
     }
     
-    private func isAPIKeyReasonablyComplete(_ apiKey: String, for provider: APIProvider) -> Bool {
-        if provider == .local {
-            return true
-        }
-        
+    /// Checks if an API key is valid (has correct prefix and sufficient length)
+    private func isAPIKeyValid(_ apiKey: String, for provider: APIProvider) -> Bool {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedKey.isEmpty else { return false }
         
         switch provider {
         case .anthropic:
@@ -354,7 +267,7 @@ struct CloudAPISettingsView: View {
                 let config = APIConfiguration(
                     provider: selectedProvider,
                     apiKey: apiKeys[selectedProvider] ?? "",
-                    model: selectedModels[selectedProvider] ?? selectedProvider.defaultModel
+                    model: selectedProvider.defaultModel
                 )
                 
                 let _ = try await APIService.shared.sendMessage(
@@ -383,81 +296,10 @@ struct CloudAPISettingsView: View {
     }
 }
 
-// MARK: - Cloud Model Selection View
-
-private struct CloudModelSelectionView: View {
-    let availableModels: [String]
-    @Binding var selectedModel: String
-    let onSelectionChange: (String) -> Void
-    
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        List {
-            ForEach(availableModels, id: \.self) { model in
-                Button(action: {
-                    selectedModel = model
-                    onSelectionChange(model)
-                    dismiss()
-                }) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(model)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                            
-                            Text(modelDescription(for: model))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if selectedModel == model {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.blue)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .navigationTitle("Select Model")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-    
-    private func modelDescription(for model: String) -> String {
-        switch model {
-        case let model where model.contains("claude-3-opus"):
-            return "Most capable model, best for complex tasks"
-        case let model where model.contains("claude-3-sonnet"):
-            return "Good balance of capability and speed"
-        case let model where model.contains("claude-3-haiku"):
-            return "Fastest and most economical"
-        case let model where model.contains("gpt-4-turbo"):
-            return "Latest GPT-4 with improved performance"
-        case "gpt-4o":
-            return "Advanced multimodal capabilities"
-        case "gpt-5":
-            return "Smartest model with built-in thinking"
-        case "gpt-5-mini":
-            return "Fast GPT-5 for most tasks"
-        case "gpt-5-nano":
-            return "Ultra-fast lightweight GPT-5"
-        case let model where model.contains("o1"):
-            return "Advanced reasoning model"
-        default:
-            return "AI language model"
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview {
     NavigationStack {
-        CloudAPISettingsView(viewModel: ChatViewModel())
+        CloudAPISettingsView()
     }
 }
-

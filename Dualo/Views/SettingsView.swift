@@ -10,8 +10,6 @@ import SwiftUI
 // MARK: - Settings View
 
 struct SettingsView: View {
-    @ObservedObject private var viewModel: ChatViewModel
-    @ObservedObject private var localModelManager = LocalModelManager.shared
     @Environment(\.dismiss) private var dismiss
     
     // Mode toggle state - defaults to On-Device (.local)
@@ -23,10 +21,6 @@ struct SettingsView: View {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
-    }
-    
-    init(viewModel: ChatViewModel? = nil) {
-        self.viewModel = viewModel ?? ChatViewModel()
     }
     
     var body: some View {
@@ -45,7 +39,7 @@ struct SettingsView: View {
                         if selectedMode == .local {
                             LocalModelsView()
                         } else {
-                            CloudAPISettingsView(viewModel: viewModel)
+                            CloudAPISettingsView()
                         }
                     } label: {
                         SettingsRowGradient(

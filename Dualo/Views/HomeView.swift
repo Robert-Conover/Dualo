@@ -118,7 +118,7 @@ struct HomeView: View {
                 .presentationBackground(Color.theme.sheetBackground)
             }
             .sheet(isPresented: $showSettings) {
-                SettingsView(viewModel: viewModel)
+                SettingsView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
