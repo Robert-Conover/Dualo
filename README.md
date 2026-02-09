@@ -27,8 +27,8 @@ Dualo is a native SwiftUI chat app that lets you talk to **cloud models** (Anthr
 
 ## Requirements
 
-- **iOS**: 18+ (uses modern SwiftUI APIs such as `NavigationStack` and `glassEffect`)
-- **Xcode**: A version that includes the iOS 18 SDK
+- **iOS**: 26+ (uses modern SwiftUI APIs such as `NavigationStack` and `glassEffect`)
+- **Xcode**: A version that includes the iOS 26 SDK
 - **Cloud usage**: An API key for Anthropic and/or OpenAI
 - **Local usage**: Sufficient device **RAM** + **storage** for the chosen GGUF model (the app includes the `com.apple.developer.kernel.increased-memory-limit` entitlement)
 

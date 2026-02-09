@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-Open `Dualo.xcodeproj` in Xcode, select a simulator or device, and build (Cmd+R). iOS 18+ required.
+Open `Dualo.xcodeproj` in Xcode, select a simulator or device, and build (Cmd+R). iOS 26+ required.
 
 **Run tests:**
 ```bash

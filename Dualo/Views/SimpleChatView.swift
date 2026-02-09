@@ -649,32 +649,35 @@ struct SimpleChatView: View {
     }
     
     private func exportAsPDF() {
-        Task {
+        Task { @MainActor in
             do {
+                let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
                 let exportService = ChatExportService()
-                let pdfData = try await exportService.makePDF(for: conversation)
-                await MainActor.run {
-                    shareExport(data: pdfData, filename: "\(conversation.title).pdf")
-                }
+                let pdfData = try await exportService.makePDF(for: exportConversation)
+                shareExport(data: pdfData, filename: "\(exportConversation.title).pdf")
             } catch {
-                await MainActor.run {
-                    exportErrorMessage = "Failed to export PDF: \(error.localizedDescription)"
-                    showExportError = true
-                }
+                exportErrorMessage = "Failed to export PDF: \(error.localizedDescription)"
+                showExportError = true
             }
         }
     }
     
     private func exportAsMarkdown() {
-        let exportService = ChatExportService()
-        let markdownData = exportService.makeMarkdown(for: conversation)
-        shareExport(data: markdownData, filename: "\(conversation.title).md")
+        Task { @MainActor in
+            let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+            let exportService = ChatExportService()
+            let markdownData = exportService.makeMarkdown(for: exportConversation)
+            shareExport(data: markdownData, filename: "\(exportConversation.title).md")
+        }
     }
     
     private func exportAsText() {
-        let exportService = ChatExportService()
-        let textData = exportService.makeText(for: conversation)
-        shareExport(data: textData, filename: "\(conversation.title).txt")
+        Task { @MainActor in
+            let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+            let exportService = ChatExportService()
+            let textData = exportService.makeText(for: exportConversation)
+            shareExport(data: textData, filename: "\(exportConversation.title).txt")
+        }
     }
     
     @MainActor
