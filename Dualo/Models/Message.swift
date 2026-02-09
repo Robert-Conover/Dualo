@@ -31,6 +31,7 @@ enum SendStatus: String, Codable, Equatable, Hashable {
     case sending
     case sent
     case failed
+    case cancelled
 }
 
 // MARK: - Message
@@ -91,6 +92,10 @@ struct Message: Identifiable, Codable, Equatable, Hashable {
     
     var isSending: Bool {
         sendStatus == .sending
+    }
+
+    var isCancelled: Bool {
+        sendStatus == .cancelled
     }
 
     enum Role {

@@ -395,13 +395,22 @@ class ChatViewModel: ObservableObject {
             #endif
         }
         
-        // Mark user message as failed on stop (shows retry affordance)
+        // Mark user message based on whether content was received
         // Must do this BEFORE clearing streamingUserMessageId
         if let userMsgId = streamingUserMessageId {
-            updateMessageStatus(userMsgId, status: .failed)
-            #if DEBUG
-            print("ChatViewModel: Marked user message as failed due to stop")
-            #endif
+            if hasMarkedUserMessageSent {
+                // Content was received — user intentionally stopped, keep as sent
+                updateMessageStatus(userMsgId, status: .sent)
+                #if DEBUG
+                print("ChatViewModel: User stopped streaming after receiving content — marked as sent")
+                #endif
+            } else {
+                // No content received — mark as cancelled
+                updateMessageStatus(userMsgId, status: .cancelled)
+                #if DEBUG
+                print("ChatViewModel: User stopped streaming before content arrived — marked as cancelled")
+                #endif
+            }
         }
         
         streamingBuffer = ""

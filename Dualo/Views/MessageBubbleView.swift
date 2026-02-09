@@ -108,6 +108,14 @@ struct MessageBubbleView: View {
                                     .foregroundStyle(.red)
                                 }
                                 .buttonStyle(.plain)
+                            } else if message.isCancelled {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "xmark.circle")
+                                        .font(.caption)
+                                    Text("Cancelled")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(.secondary)
                             }
                         }
                     } else {

@@ -9,12 +9,17 @@ import SwiftUI
 import UIKit
 
 struct SimpleChatView: View {
-    let conversation: Conversation
+    let conversationId: UUID
+
+    /// Always returns the freshest conversation from ConversationManager — never stale.
+    private var conversation: Conversation? {
+        conversationManager.conversations.first(where: { $0.id == conversationId })
+    }
     @StateObject private var viewModel = ChatViewModel()
-    @ObservedObject private var conversationManager = ConversationManager.shared
-    @ObservedObject private var localModelManager = LocalModelManager.shared
-    @ObservedObject private var ggufService = GGUFService.shared
-    @ObservedObject private var contextTracker = ContextTracker.shared
+    @EnvironmentObject var conversationManager: ConversationManager
+    @EnvironmentObject var localModelManager: LocalModelManager
+    @EnvironmentObject var ggufService: GGUFService
+    @EnvironmentObject var contextTracker: ContextTracker
     @State private var messageText = ""
     @State private var showScrollToBottom = false
     @FocusState private var isInputFocused: Bool
@@ -78,6 +83,10 @@ struct SimpleChatView: View {
     // MARK: - Lifecycle Event Handlers (extracted to reduce body complexity)
     
     private func handleOnAppear() {
+        guard let conversation = conversation else {
+            print("SimpleChatView onAppear: conversation not found for id \(conversationId)")
+            return
+        }
         print("SimpleChatView onAppear: conversation.id = \(conversation.id), messages count = \(conversation.messages.count)")
         // Initialize the current state variables
         currentTitle = conversation.title
@@ -109,7 +118,7 @@ struct SimpleChatView: View {
     
     private func sendPendingMessage(_ message: String) async {
         // For local models, wait for the model to load before sending
-        if conversation.provider == .local {
+        if conversation?.provider == .local {
             print("SimpleChatView: Waiting for local model to load...")
             // Wait for model to be loaded (with timeout)
             var waitAttempts = 0
@@ -133,7 +142,7 @@ struct SimpleChatView: View {
     
     private func handleConversationsChange(_ oldValue: [Conversation], _ newValue: [Conversation]) {
         // Update local state when the conversation changes
-        if let updatedConversation = newValue.first(where: { $0.id == conversation.id }) {
+        if let updatedConversation = newValue.first(where: { $0.id == conversationId }) {
             // Only update UI state if the conversation data actually changed
             if updatedConversation.title != currentTitle {
                 currentTitle = updatedConversation.title
@@ -458,7 +467,7 @@ struct SimpleChatView: View {
     private var optionsMenuToolbarItem: some View {
         Menu {
             Button(action: {
-                newTitle = currentTitle.isEmpty ? conversation.title : currentTitle
+                newTitle = currentTitle.isEmpty ? (conversation?.title ?? "") : currentTitle
                 showRenameAlert = true
             }) {
                 Label("Rename Chat", systemImage: "pencil")
@@ -514,19 +523,17 @@ struct SimpleChatView: View {
     
     private func renameChat(to newTitle: String) {
         #if DEBUG
-        print("SimpleChatView: Renaming chat from '\(conversation.title)' to '\(newTitle)'")
+        print("SimpleChatView: Renaming chat from '\(conversation?.title ?? "")' to '\(newTitle)'")
         #endif
         
-        // IMPORTANT: Get the CURRENT conversation from conversationManager, not the stale `conversation` prop
-        // The `conversation` prop is a snapshot from when the view was created and doesn't include new messages
-        guard var updatedConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) else {
+        guard var updatedConversation = conversation else {
             print("SimpleChatView: Could not find conversation to rename")
             return
         }
         updatedConversation.title = newTitle
         updatedConversation.updatedAt = Date()
-        conversationManager.updateConversation(updatedConversation, moveToTop: true) // Title changes should move to top
-        currentTitle = newTitle // Update the local state to reflect immediately
+        conversationManager.updateConversation(updatedConversation, moveToTop: true)
+        currentTitle = newTitle
     }
     
     private func changeConversationModel(to newModel: String, provider: APIProvider) {
@@ -541,9 +548,7 @@ struct SimpleChatView: View {
             GGUFService.shared.unloadModel()
         }
         
-        // IMPORTANT: Get the CURRENT conversation from conversationManager, not the stale `conversation` prop
-        // The `conversation` prop is a snapshot from when the view was created and doesn't include new messages
-        guard var updatedConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) else {
+        guard var updatedConversation = conversation else {
             print("SimpleChatView: Could not find conversation to update model")
             return
         }
@@ -594,9 +599,7 @@ struct SimpleChatView: View {
             return
         }
         
-        // IMPORTANT: Get the CURRENT conversation from conversationManager, not the stale `conversation` prop
-        // The `conversation` prop is a snapshot from when the view was created and doesn't include new messages
-        guard var updatedConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) else {
+        guard var updatedConversation = conversation else {
             print("SimpleChatView: Could not find conversation to update to local model")
             return
         }
@@ -651,7 +654,7 @@ struct SimpleChatView: View {
     private func exportAsPDF() {
         Task { @MainActor in
             do {
-                let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+                guard let exportConversation = conversation else { return }
                 let exportService = ChatExportService()
                 let pdfData = try await exportService.makePDF(for: exportConversation)
                 shareExport(data: pdfData, filename: "\(exportConversation.title).pdf")
@@ -664,7 +667,7 @@ struct SimpleChatView: View {
     
     private func exportAsMarkdown() {
         Task { @MainActor in
-            let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+            guard let exportConversation = conversation else { return }
             let exportService = ChatExportService()
             let markdownData = exportService.makeMarkdown(for: exportConversation)
             shareExport(data: markdownData, filename: "\(exportConversation.title).md")
@@ -673,7 +676,7 @@ struct SimpleChatView: View {
     
     private func exportAsText() {
         Task { @MainActor in
-            let exportConversation = conversationManager.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+            guard let exportConversation = conversation else { return }
             let exportService = ChatExportService()
             let textData = exportService.makeText(for: exportConversation)
             shareExport(data: textData, filename: "\(exportConversation.title).txt")
@@ -806,6 +809,10 @@ private struct AttachmentModifier: ViewModifier {
 
 #Preview {
     NavigationStack {
-        SimpleChatView(conversation: Conversation(title: "Sample Chat"))
+        SimpleChatView(conversationId: UUID())
+            .environmentObject(ConversationManager.shared)
+            .environmentObject(LocalModelManager.shared)
+            .environmentObject(GGUFService.shared)
+            .environmentObject(ContextTracker.shared)
     }
 }

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LocalModelsView: View {
-    @ObservedObject private var modelManager = LocalModelManager.shared
+    @EnvironmentObject var modelManager: LocalModelManager
     @Environment(\.dismiss) private var dismiss
     
     @State private var showDeleteAlert = false
@@ -294,6 +294,7 @@ struct LocalModelsView: View {
 #Preview {
     NavigationStack {
         LocalModelsView()
+            .environmentObject(LocalModelManager.shared)
     }
 }
 

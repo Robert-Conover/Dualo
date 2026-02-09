@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MainTabView: View {
-    @ObservedObject private var conversationManager = ConversationManager.shared
+    @EnvironmentObject var conversationManager: ConversationManager
 
     var body: some View {
         HomeView()
@@ -20,4 +20,8 @@ struct MainTabView: View {
 
 #Preview {
     MainTabView()
+        .environmentObject(ConversationManager.shared)
+        .environmentObject(LocalModelManager.shared)
+        .environmentObject(GGUFService.shared)
+        .environmentObject(ContextTracker.shared)
 }

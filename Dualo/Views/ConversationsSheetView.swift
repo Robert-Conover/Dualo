@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ConversationsSheetView: View {
-    @ObservedObject private var conversationManager = ConversationManager.shared
+    @EnvironmentObject var conversationManager: ConversationManager
     @Binding var selectedConversation: Conversation?
     @Binding var isPresented: Bool
     
@@ -290,5 +290,6 @@ struct ConversationsSheetView: View {
         selectedConversation: .constant(nil),
         isPresented: .constant(true)
     )
+    .environmentObject(ConversationManager.shared)
 }
 

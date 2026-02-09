@@ -9,9 +9,9 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
-    @ObservedObject private var conversationManager = ConversationManager.shared
-    @ObservedObject private var localModelManager = LocalModelManager.shared
-    @ObservedObject private var ggufService = GGUFService.shared
+    @EnvironmentObject var conversationManager: ConversationManager
+    @EnvironmentObject var localModelManager: LocalModelManager
+    @EnvironmentObject var ggufService: GGUFService
     
     @State private var messageText = ""
     @State private var showConversations = false
@@ -106,7 +106,7 @@ struct HomeView: View {
                     }
             )
             .navigationDestination(item: $selectedConversation) { conversation in
-                SimpleChatView(conversation: conversation)
+                SimpleChatView(conversationId: conversation.id)
             }
             .sheet(isPresented: $showConversations) {
                 ConversationsSheetView(
@@ -576,4 +576,8 @@ struct HomeView: View {
 
 #Preview {
     HomeView()
+        .environmentObject(ConversationManager.shared)
+        .environmentObject(LocalModelManager.shared)
+        .environmentObject(GGUFService.shared)
+        .environmentObject(ContextTracker.shared)
 }
