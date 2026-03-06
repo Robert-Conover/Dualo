@@ -7,6 +7,7 @@
 
 import Foundation
 
+@MainActor
 protocol APIServiceProtocol {
     func sendMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) async throws -> String
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) -> AsyncThrowingStream<String, Error>
@@ -14,6 +15,7 @@ protocol APIServiceProtocol {
     func stopStreaming()
 }
 
+@MainActor
 class APIService: APIServiceProtocol {
     static let shared = APIService()
 
@@ -46,62 +48,61 @@ class APIService: APIServiceProtocol {
     }
     
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment] = [], conversationId: UUID? = nil) -> AsyncThrowingStream<String, Error> {
-        // For local models, wrap GGUFService call in a Task to handle @MainActor isolation
+        // For local models, relay GGUFService stream with proper cancellation
         if config.provider == .local {
             guard let conversationId = conversationId else {
-                return AsyncThrowingStream { continuation in
-                    continuation.finish(throwing: NetworkError.invalidRequest("Conversation ID is required for local models"))
-                }
+                let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
+                continuation.finish(throwing: NetworkError.invalidRequest("Conversation ID is required for local models"))
+                return stream
             }
-            let convId = conversationId // Capture for sendable closure
-            return AsyncThrowingStream { continuation in
-                Task { @MainActor in
-                    let stream = GGUFService.shared.streamMessage(message, history: history, conversationId: convId)
-                    do {
-                        for try await chunk in stream {
-                            continuation.yield(chunk)
-                        }
-                        continuation.finish()
-                    } catch {
-                        continuation.finish(throwing: error)
+            let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
+            let innerTask = Task {
+                let innerStream = GGUFService.shared.streamMessage(message, history: history, conversationId: conversationId)
+                do {
+                    for try await chunk in innerStream {
+                        continuation.yield(chunk)
                     }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
+            self.currentStreamingTask = innerTask
+            continuation.onTermination = { @Sendable _ in
+                innerTask.cancel()
+                Task { @MainActor in
+                    GGUFService.shared.stopGeneration()
+                }
+            }
+            return stream
         }
-        
+
         // Cancel any existing streaming task for cloud providers
         currentStreamingTask?.cancel()
-        
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    switch config.provider {
-                    case .anthropic:
-                        try await streamAnthropicMessage(message, history: history, config: config, attachments: attachments, continuation: continuation)
-                    case .openai:
-                        try await streamOpenAIMessage(message, history: history, config: config, attachments: attachments, continuation: continuation)
-                    case .local:
-                        // Handled above, should not reach here
-                        break
-                    }
-                } catch {
-                    if !Task.isCancelled {
-                        continuation.finish(throwing: error)
-                    }
-                }
-            }
-            
-            self.currentStreamingTask = task
 
-            continuation.onTermination = { @Sendable termination in
-                switch termination {
-                case .cancelled:
-                    task.cancel()
-                default:
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
+
+        let task = Task {
+            do {
+                switch config.provider {
+                case .anthropic:
+                    try await self.streamAnthropicMessage(message, history: history, config: config, attachments: attachments, continuation: continuation)
+                case .openai:
+                    try await self.streamOpenAIMessage(message, history: history, config: config, attachments: attachments, continuation: continuation)
+                case .local:
                     break
+                }
+            } catch {
+                if !Task.isCancelled {
+                    continuation.finish(throwing: error)
                 }
             }
         }
+
+        self.currentStreamingTask = task
+        continuation.onTermination = { @Sendable _ in task.cancel() }
+
+        return stream
     }
     
     func stopStreaming() {

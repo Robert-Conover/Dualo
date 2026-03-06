@@ -9,7 +9,13 @@ import SwiftUI
 import Foundation
 
 struct MessageContentRenderer {
-    
+
+    /// Cached regexes (compiled once for performance)
+    private static let thinkingRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"<think>(.*?)(?:</think>|$)"#, options: [.dotMatchesLineSeparators])
+    private static let codeBlockRegex: NSRegularExpression? =
+        try? NSRegularExpression(pattern: #"```(\w*)\r?\n?(.*?)```"#, options: [.dotMatchesLineSeparators])
+
     enum ContentType: Identifiable, Equatable {
         case text(AttributedString, index: Int)
         case codeBlock(code: String, language: String?, index: Int)
@@ -32,9 +38,6 @@ struct MessageContentRenderer {
         var currentPosition = content.startIndex
         
         // First, extract <think>...</think> blocks before processing other content
-        // Pattern handles both closed tags and unclosed tags (for streaming)
-        let thinkingPattern = #"<think>(.*?)(?:</think>|$)"#
-        let thinkingRegex = try? NSRegularExpression(pattern: thinkingPattern, options: [.dotMatchesLineSeparators])
         let nsContent = content as NSString
         let thinkingMatches = thinkingRegex?.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length)) ?? []
         
@@ -114,11 +117,8 @@ struct MessageContentRenderer {
         var results: [UnindexedContentType] = []
         var currentPosition = content.startIndex
         
-        // Updated pattern to handle various code block formats
-        let codeBlockPattern = #"```(\w*)\r?\n?(.*?)```"#
-        let regex = try? NSRegularExpression(pattern: codeBlockPattern, options: [.dotMatchesLineSeparators])
         let nsContent = content as NSString
-        let matches = regex?.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length)) ?? []
+        let matches = codeBlockRegex?.matches(in: content, options: [], range: NSRange(location: 0, length: nsContent.length)) ?? []
         
         for match in matches {
             guard let matchRange = Range(match.range, in: content),

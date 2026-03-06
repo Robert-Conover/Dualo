@@ -58,7 +58,8 @@ struct SimpleChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .modifier(AlertsModifier(
-                viewModel: viewModel,
+                showError: $viewModel.showError,
+                errorMessage: viewModel.errorMessage,
                 showRenameAlert: $showRenameAlert,
                 newTitle: $newTitle,
                 showExportError: $showExportError,
@@ -722,7 +723,8 @@ struct SimpleChatView: View {
 // MARK: - Alerts View Modifier (extracted to reduce body complexity)
 
 private struct AlertsModifier: ViewModifier {
-    @ObservedObject var viewModel: ChatViewModel
+    @Binding var showError: Bool
+    let errorMessage: String
     @Binding var showRenameAlert: Bool
     @Binding var newTitle: String
     @Binding var showExportError: Bool
@@ -730,17 +732,17 @@ private struct AlertsModifier: ViewModifier {
     @Binding var showModelLoadError: Bool
     let modelLoadErrorMessage: String
     let renameChat: (String) -> Void
-    
+
     func body(content: Content) -> some View {
         content
-            .alert("Error", isPresented: $viewModel.showError) {
+            .alert("Error", isPresented: $showError) {
                 Button("OK") {
-                    viewModel.showError = false
+                    showError = false
                     let notificationFeedback = UINotificationFeedbackGenerator()
                     notificationFeedback.notificationOccurred(.error)
                 }
             } message: {
-                Text(viewModel.errorMessage)
+                Text(errorMessage)
             }
             .alert("Rename Chat", isPresented: $showRenameAlert) {
                 TextField("Chat Title", text: $newTitle)

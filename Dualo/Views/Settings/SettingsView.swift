@@ -73,7 +73,10 @@ struct SettingsView: View {
             .onAppear {
                 loadAPIKeys()
             }
-            .alert("Error", isPresented: .constant(saveError != nil)) {
+            .alert("Error", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
                 Button("OK") {
                     let errorFeedback = UINotificationFeedbackGenerator()
                     errorFeedback.notificationOccurred(.error)

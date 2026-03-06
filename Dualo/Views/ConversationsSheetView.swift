@@ -226,10 +226,14 @@ struct ConversationsSheetView: View {
         .scrollContentBackground(.hidden)
     }
     
-    private func timeString(from date: Date) -> String {
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter
+    }()
+
+    private func timeString(from date: Date) -> String {
+        Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
     
     // MARK: - Model Badge

@@ -210,10 +210,13 @@ class ConversationManager: ObservableObject, ConversationManaging {
             migrationErrors.forEach { print("  - \($0)") }
         }
 
-        // Remove from UserDefaults after successful migration
-        UserDefaults.standard.removeObject(forKey: legacyKey)
-
-        print("ConversationManager: Successfully migrated \(legacyConversations.count) conversations to file storage")
+        // Only remove from UserDefaults if all migrations succeeded
+        if migrationErrors.isEmpty {
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+            print("ConversationManager: Successfully migrated \(legacyConversations.count) conversations to file storage")
+        } else {
+            print("ConversationManager: Keeping UserDefaults -- \(migrationErrors.count) migration errors")
+        }
         return legacyConversations
     }
     

@@ -81,6 +81,7 @@ class GGUFService: ObservableObject, GGUFServicing {
     
     private var llm: LLM?
     private var currentGenerationTask: Task<Void, Never>?
+    private var currentGenerationId: UUID?
     private let localModelManager = LocalModelManager.shared
     
     /// Store model info for context recreation
@@ -251,145 +252,157 @@ class GGUFService: ObservableObject, GGUFServicing {
         let contextSize = self.loadedModelContextSize
         let previousConversationId = self.currentConversationId
         let isNewConversation = previousConversationId != conversationId
-        
+
         // Only convert history if we're switching conversations
         let historyForLLM: [Chat]? = isNewConversation ? self.convertToLLMHistory(history) : nil
-        
-        return AsyncThrowingStream { continuation in
-            let task = Task.detached { [weak self] in
-                guard let self = self else {
-                    continuation.finish()
-                    return
-                }
-                
-                guard isLoaded,
-                      let modelPath = modelPath,
-                      let template = template else {
-                    continuation.finish(throwing: GGUFServiceError.modelNotLoaded)
-                    return
-                }
-                
-                // Update UI state and track current conversation
-                await MainActor.run {
-                    self.isGenerating = true
-                    self.currentTokenCount = 0
-                    self.generationStartTime = Date()
-                    self.lastGenerationStats = nil
-                    self.currentConversationId = conversationId
-                }
-                
-                // Get or create LLM instance
-                let activeLLM: LLM
-                
-                if let existingLLM = await MainActor.run(body: { self.llm }) {
-                    if isNewConversation {
-                        // Conversation changed - reset context and load new history
-                        // LLM.swift v2.0.1: reset() clears history and resets KV cache
-                        print("🔄 GGUFService: Conversation changed, resetting context")
-                        existingLLM.reset()
-                        
-                        // Load the new conversation's history (if any)
-                        if let history = historyForLLM, !history.isEmpty {
-                            print("📜 GGUFService: Loading \(history.count) history turns for new conversation")
-                            existingLLM.history = history
-                        }
-                    } else {
-                        // Same conversation - let LLM.swift manage history naturally
-                        // Don't touch history - it already has the previous turns
-                        print("💬 GGUFService: Continuing conversation (LLM history: \(existingLLM.history.count) turns)")
-                    }
-                    activeLLM = existingLLM
-                } else {
-                    // First use - create fresh LLM instance
-                    print("🔄 GGUFService: Creating new LLM instance (context: \(contextSize) tokens)")
-                    guard let freshLLM = LLM(from: modelPath, template: template, maxTokenCount: contextSize) else {
-                        continuation.finish(throwing: GGUFServiceError.modelLoadFailed("Failed to load LLM"))
-                        await MainActor.run {
-                            self.isGenerating = false
-                        }
-                        return
-                    }
-                    
-                    // Load initial history if provided
-                    if let history = historyForLLM, !history.isEmpty {
-                        print("📜 GGUFService: Loading \(history.count) initial history turns")
-                        freshLLM.history = history
-                    }
-                    
-                    await MainActor.run {
-                        self.llm = freshLLM
-                    }
-                    
-                    activeLLM = freshLLM
-                }
-                
-                // Set up the update callback to stream tokens
-                activeLLM.update = { [weak self] token in
-                    if let token = token {
-                        let sanitizedToken = self?.sanitizeText(token) ?? token
-                        continuation.yield(sanitizedToken)
-                        
-                        Task { @MainActor in
-                            self?.currentTokenCount += 1
-                        }
-                    }
-                }
-                
-                // Let LLM.swift handle everything - it will:
-                // 1. Preprocess the message with its internal history
-                // 2. Generate the response
-                // 3. Automatically append this turn to history
-                await activeLLM.respond(to: message)
-                
-                // Clean up: Strip thinking blocks from history to save context space
-                // Thinking blocks are verbose (~200-400 tokens each) but not needed for context
-                self.cleanHistoryThinkingBlocks(activeLLM)
-                
-                await MainActor.run {
-                    if let startTime = self.generationStartTime {
-                        let duration = Date().timeIntervalSince(startTime)
-                        let tokensPerSecond = duration > 0 ? Double(self.currentTokenCount) / duration : 0
-                        self.lastGenerationStats = GenerationStats(
-                            tokenCount: self.currentTokenCount,
-                            durationSeconds: duration,
-                            tokensPerSecond: tokensPerSecond
-                        )
-                    }
-                    self.isGenerating = false
-                }
-                
+
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
+        let generationId = UUID()
+
+        let task = Task.detached { [weak self] in
+            guard let self = self else {
                 continuation.finish()
+                return
             }
-            
-            Task { @MainActor [weak self] in
-                self?.currentGenerationTask = task
+
+            guard isLoaded,
+                  let modelPath = modelPath,
+                  let template = template else {
+                continuation.finish(throwing: GGUFServiceError.modelNotLoaded)
+                return
             }
-            
-            continuation.onTermination = { @Sendable _ in
-                Task { @MainActor [weak self] in
-                    self?.stopGeneration()
+
+            // Update UI state and track current conversation
+            await MainActor.run {
+                self.isGenerating = true
+                self.currentTokenCount = 0
+                self.generationStartTime = Date()
+                self.lastGenerationStats = nil
+                self.currentConversationId = conversationId
+            }
+
+            // Get or create LLM instance
+            let activeLLM: LLM
+
+            if let existingLLM = await MainActor.run(body: { self.llm }) {
+                if isNewConversation {
+                    // Conversation changed - reset context and load new history
+                    // LLM.swift v2.0.1: reset() clears history and resets KV cache
+                    print("🔄 GGUFService: Conversation changed, resetting context")
+                    existingLLM.reset()
+
+                    // Load the new conversation's history (if any)
+                    if let history = historyForLLM, !history.isEmpty {
+                        print("📜 GGUFService: Loading \(history.count) history turns for new conversation")
+                        existingLLM.history = history
+                    }
+                } else {
+                    // Same conversation - let LLM.swift manage history naturally
+                    // Don't touch history - it already has the previous turns
+                    print("💬 GGUFService: Continuing conversation (LLM history: \(existingLLM.history.count) turns)")
+                }
+                activeLLM = existingLLM
+            } else {
+                // First use - create fresh LLM instance
+                print("🔄 GGUFService: Creating new LLM instance (context: \(contextSize) tokens)")
+                guard let freshLLM = LLM(from: modelPath, template: template, maxTokenCount: contextSize) else {
+                    continuation.finish(throwing: GGUFServiceError.modelLoadFailed("Failed to load LLM"))
+                    await MainActor.run {
+                        self.isGenerating = false
+                    }
+                    return
+                }
+
+                // Load initial history if provided
+                if let history = historyForLLM, !history.isEmpty {
+                    print("📜 GGUFService: Loading \(history.count) initial history turns")
+                    freshLLM.history = history
+                }
+
+                await MainActor.run {
+                    self.llm = freshLLM
+                }
+
+                activeLLM = freshLLM
+            }
+
+            // Set up the update callback to stream tokens
+            activeLLM.update = { [weak self] token in
+                if let token = token {
+                    let sanitizedToken = self?.sanitizeText(token) ?? token
+                    continuation.yield(sanitizedToken)
+
+                    Task { @MainActor in
+                        self?.currentTokenCount += 1
+                    }
+                }
+            }
+
+            // Let LLM.swift handle everything - it will:
+            // 1. Preprocess the message with its internal history
+            // 2. Generate the response
+            // 3. Automatically append this turn to history
+            await activeLLM.respond(to: message)
+
+            // Clean up: Strip thinking blocks from history to save context space
+            // Thinking blocks are verbose (~200-400 tokens each) but not needed for context
+            let cleanedHistory = Self.buildCleanedHistory(from: activeLLM.history)
+            if cleanedHistory.count != activeLLM.history.count ||
+               zip(cleanedHistory, activeLLM.history).contains(where: { $0.content != $1.content }) {
+                activeLLM.history = cleanedHistory
+            }
+
+            await MainActor.run {
+                if let startTime = self.generationStartTime {
+                    let duration = Date().timeIntervalSince(startTime)
+                    let tokensPerSecond = duration > 0 ? Double(self.currentTokenCount) / duration : 0
+                    self.lastGenerationStats = GenerationStats(
+                        tokenCount: self.currentTokenCount,
+                        durationSeconds: duration,
+                        tokensPerSecond: tokensPerSecond
+                    )
+                }
+                self.isGenerating = false
+            }
+
+            continuation.finish()
+        }
+
+        // Synchronous assignments on MainActor (no async hop needed with makeStream)
+        self.currentGenerationTask = task
+        self.currentGenerationId = generationId
+
+        continuation.onTermination = { @Sendable [weak self] _ in
+            task.cancel()
+            Task { @MainActor in
+                self?.llm?.stop()
+                if self?.currentGenerationId == generationId {
+                    self?.isGenerating = false
+                    self?.currentGenerationTask = nil
+                    self?.currentGenerationId = nil
                 }
             }
         }
+
+        return stream
     }
     
     /// Clear the current conversation context
     /// Call this when starting a brand new conversation
     func clearConversationContext() {
+        if isGenerating { stopGeneration() }
         llm?.reset()
         currentConversationId = nil
         print("🧹 GGUFService: Conversation context cleared")
     }
-    
-    /// Strip thinking blocks from LLM.swift's internal history to save context space
-    /// Called after each response to keep history lean
-    nonisolated private func cleanHistoryThinkingBlocks(_ llm: LLM) {
-        let originalCount = llm.history.count
-        guard originalCount > 0 else { return }
-        
-        // Process history to strip thinking blocks from bot responses
+
+    /// Build a cleaned copy of LLM history with thinking blocks stripped from bot responses.
+    /// Pure function — operates on values, safe to call from any isolation context.
+    nonisolated private static func buildCleanedHistory(from history: [Chat]) -> [Chat] {
+        guard !history.isEmpty else { return [] }
+
         var cleanedHistory: [Chat] = []
-        for chat in llm.history {
+        for chat in history {
             if chat.role == .bot {
                 let cleanedContent = stripThinkingBlocks(from: chat.content)
                 if !cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -399,13 +412,7 @@ class GGUFService: ObservableObject, GGUFServicing {
                 cleanedHistory.append(chat)
             }
         }
-        
-        // Only update if we actually changed something
-        if cleanedHistory.count != originalCount || 
-           zip(cleanedHistory, llm.history).contains(where: { $0.content != $1.content }) {
-            llm.history = cleanedHistory
-            print("🧹 GGUFService: Cleaned thinking blocks from history (\(originalCount) → \(cleanedHistory.count) turns)")
-        }
+        return cleanedHistory
     }
     
     /// Convert app's Message array to LLM.swift's Chat history format
@@ -419,7 +426,7 @@ class GGUFService: ObservableObject, GGUFServicing {
             let content: String
             if role == .bot {
                 // Strip <think>...</think> blocks from assistant messages
-                content = stripThinkingBlocks(from: message.content)
+                content = Self.stripThinkingBlocks(from: message.content)
             } else {
                 content = message.content
             }
@@ -433,7 +440,7 @@ class GGUFService: ObservableObject, GGUFServicing {
     
     /// Remove <think>...</think> blocks from content
     /// These are the model's internal reasoning and shouldn't be included in history
-    nonisolated private func stripThinkingBlocks(from content: String) -> String {
+    nonisolated private static func stripThinkingBlocks(from content: String) -> String {
         // Use cached regex for performance (avoid recompiling on every call)
         guard let regex = Self.thinkingBlockRegex else {
             return content

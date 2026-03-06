@@ -511,7 +511,8 @@ class ChatViewModel: ObservableObject {
         }
         
         streamingUserMessageId = nil
-        
+        streamingMessageId = nil
+
         let errorFeedback = UINotificationFeedbackGenerator()
         errorFeedback.notificationOccurred(.error)
     }
