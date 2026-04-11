@@ -1,175 +1,111 @@
-Dualo — iOS Chat App
-====================
+<p align="center">
+  <img src="Dualo/Assets.xcassets/AppIcon.appiconset/dualoLight-iOS-Default-1024x1024@1x.png" alt="Dualo app icon" width="164" height="164">
+</p>
 
-Dualo is a native SwiftUI chat app that lets you talk to **OpenAI cloud models** and **run GGUF models fully on-device** (via llama.cpp through `LLM.swift`).
+<h1 align="center">Dualo</h1>
 
-## Features
+<p align="center"><strong>One chat app for OpenAI in the cloud and GGUF models on-device.</strong></p>
 
-- **OpenAI + local model selection**: Per-chat model selection with streaming responses.
-- **On-device local models (GGUF)**: Download small GGUF models from Hugging Face and run them offline for full privacy.
-- **Image attachments (Cloud)**: Attach photos from the library or camera (multiple images supported) and send them with your prompt.
-- **Conversation management**: Multiple chats, rename/delete, search, and automatic persistence.
-- **Export**: Share conversations as **PDF**, **Markdown**, or **plain text**.
-- **Markdown rendering**: Renders links, emphasis, inline code, and fenced code blocks (with a copy button).
-- **Stop generation**: Cancel streaming mid-response.
-- **Secure credentials**: Cloud API keys are stored in iOS Keychain.
+<p align="center">
+  Dualo is a native SwiftUI iOS app that lets you switch between cloud-hosted OpenAI models and fully local GGUF models without changing the core chat experience.
+</p>
 
-## Tech stack
+<p align="center">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-iOS%2026%2B-1f2937?style=flat-square">
+  <img alt="SwiftUI" src="https://img.shields.io/badge/built%20with-SwiftUI-2563eb?style=flat-square">
+  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-d4a574?style=flat-square">
+  <img alt="Models" src="https://img.shields.io/badge/models-OpenAI%20%2B%20GGUF-0f172a?style=flat-square">
+</p>
 
-- **Language/UI**: Swift, SwiftUI
-- **Concurrency**: Swift Concurrency (`async`/`await`, `AsyncThrowingStream`) + Combine (light usage)
-- **Networking**: `URLSession` + true incremental SSE streaming (`URLSession.bytes(for:)`)
-- **On-device LLM**: [`LLM.swift`](https://github.com/eastriverlee/LLM.swift) (llama.cpp) for GGUF inference
-- **Storage**: JSON files in the app’s Documents directory (one file per conversation)
-- **Security**: Keychain (`Security.framework`) for API keys
-- **Media**: PhotosUI + UIKit (`PHPickerViewController`, `UIImagePickerController`) for attachments
-- **Export/Share**: `UIGraphicsPDFRenderer` + `UIActivityViewController`
+## What It Is
+Dualo is a native iPhone chat app built around a simple idea: cloud AI and local AI should feel like the same product.
+
+Instead of splitting those workflows into separate tools, Dualo gives you one conversation UI with two backends:
+
+- `OpenAI` for cloud-hosted models with live streaming
+- `Local GGUF` for fully on-device inference through [`LLM.swift`](https://github.com/eastriverlee/LLM.swift)
+
+Each conversation stores its own provider and model, so you can keep one chat on a cloud model and the next entirely offline.
+
+## How It Works
+1. Open `Settings` and add an OpenAI API key, or download a local GGUF model.
+2. Start a new conversation and choose the provider and model you want to use.
+3. Send a prompt and watch the reply stream live.
+4. Attach images for cloud chats when you want multimodal input.
+5. Revisit, rename, search, export, or delete saved conversations at any time.
+
+## Core Capabilities
+- `Per-chat provider selection` so each conversation can use OpenAI or a local model independently
+- `Real streaming responses` using SSE for cloud models and token callbacks for GGUF models
+- `On-device inference` with downloadable GGUF models from Hugging Face
+- `Image attachments` for cloud conversations using photo library or camera input
+- `Conversation management` with local persistence, search, rename, and deletion
+- `Export tools` for PDF, Markdown, and plain text sharing
+- `Markdown rendering` with code block formatting and copy support
+- `Keychain-backed credentials` for secure API key storage
+
+## Why It Feels Different
+- Built around hybrid AI use instead of treating local inference as an afterthought
+- Uses the same streaming chat flow for both cloud and on-device models
+- Saves conversations locally with their provider and model configuration intact
+- Keeps local model chats private by running them entirely on the device
+- Ships as a native SwiftUI app instead of a wrapped web client
+
+## Privacy And Data
+- `Conversations` are stored locally as JSON files in the app's Documents directory
+- `API keys` are saved in iOS Keychain
+- `Cloud chats` send prompts and image attachments to OpenAI over HTTPS
+- `Local chats` stay on-device when using GGUF models
 
 ## Requirements
+- iOS 26 or later
+- Xcode with the iOS 26 SDK
+- An OpenAI API key for cloud usage
+- Enough free storage and RAM for the local GGUF models you want to run
 
-- **iOS**: 26+ (uses modern SwiftUI APIs such as `NavigationStack` and `glassEffect`)
-- **Xcode**: A version that includes the iOS 26 SDK
-- **Cloud usage**: An OpenAI API key
-- **Local usage**: Sufficient device **RAM** + **storage** for the chosen GGUF model (the app includes the `com.apple.developer.kernel.increased-memory-limit` entitlement)
-
-## Getting started
-
-### Build & run
-
-1. Open `Dualo.xcodeproj` in Xcode
-2. Select a simulator or device
-3. Build & run (Cmd+R)
-
-### Configure Cloud AI
-
-1. Open **Settings** (gear icon)
-2. Choose **Cloud AI**
-3. Enter your OpenAI API key
-4. Select a default model
-5. Use **Test Connection** to verify your setup
-
-Get API keys:
-- **OpenAI**: `https://platform.openai.com`
-
-### Configure On-Device (GGUF)
-
-1. Open **Settings**
-2. Choose **On-Device**
-3. Tap **Manage** to open **Local Models**
-4. Download a model (large downloads; Wi‑Fi recommended)
-5. Back in the chat model picker, select the downloaded model under **Local Models**
-
-Notes:
-- Local inference is **offline**. (No messages leave the device.)
-- Image attachments are currently only used for **cloud** providers.
-
-### Send images (Cloud)
-
-In the composer, tap **+** to attach images:
-- **Photo Library**
-- **Take Photo**
-
-Images are uploaded as base64 to the selected provider using that provider’s multimodal message format. Make sure your chosen model supports vision/image input.
-
-## Data & privacy
-
-- **Conversations**: Stored locally as JSON files under the app’s Documents directory (`Documents/Conversations/…`).
-- **API keys**: Stored in **Keychain** (never committed to source).
-- **Cloud**: Messages (and attached images) are sent to OpenAI over HTTPS.
-- **Local**: Prompts/responses remain on-device.
-
-## Project structure (high level)
-
-```
-Dualo/
-├── DualoApp.swift                 # App entry point
-├── Constants.swift                # App-wide constants / strings
-├── DI/
-│   └── DependencyContainer.swift  # Dependency injection container
-├── Models/
-│   ├── APIConfiguration.swift     # Provider configs (OpenAI/Local)
-│   ├── Conversation.swift         # Conversation model (provider + model per chat)
-│   ├── Message.swift              # Message model + image attachments
-│   └── LocalModel.swift           # GGUF catalog + template types
-├── Protocols/
-│   └── ServiceProtocols.swift     # Service protocol definitions
-├── Services/
-│   ├── APIService.swift           # Cloud API calls + SSE streaming (+ image payloads)
-│   ├── ChatExportService.swift    # PDF/Markdown/Text export
-│   ├── ContextTracker.swift       # Context window usage tracking
-│   ├── ConversationManager.swift  # File-based persistence + migrations
-│   ├── GGUFService.swift          # Local inference via LLM.swift
-│   ├── HTTPErrorHandler.swift     # HTTP error parsing + handling
-│   ├── ImagePickerService.swift   # Photo library + camera access
-│   ├── KeychainQueryBuilder.swift # Keychain query construction
-│   ├── KeychainService.swift      # Keychain storage (per-provider configs)
-│   ├── LocalModelManager.swift    # Download/delete local GGUF models
-│   ├── MessageContentRenderer.swift # Markdown parsing + code block detection
-│   ├── ModelUtilities.swift       # Model-related utility functions
-│   ├── NetworkError.swift         # Network error types
-│   └── MessageFormatters/
-│       ├── MessageFormatterProtocol.swift
-│       └── OpenAIMessageFormatter.swift
-├── Utilities/
-│   └── HapticFeedback.swift       # Haptic feedback utilities
-├── ViewModels/
-│   └── ChatViewModel.swift        # Send/stream/stop + persistence throttling
-├── Views/
-│   ├── Chat/
-│   │   ├── ChatInputBar.swift     # Message input + attachments
-│   │   └── MessageListView.swift  # Scrollable message list
-│   ├── CodeBlockView.swift        # Monospace code blocks + copy
-│   ├── Components/
-│   │   ├── ContextUsageIndicator.swift   # Context window usage UI
-│   │   ├── ImageAttachmentView.swift     # Inline + fullscreen image viewer
-│   │   └── LocalModelStreamingIndicator.swift # Local model streaming status
-│   ├── ConversationsSheetView.swift # Search/rename/delete conversations
-│   ├── HomeView.swift             # Home screen + model picker + composer
-│   ├── LocalModelsView.swift      # Local model download management UI
-│   ├── MainTabView.swift          # Tab-based navigation
-│   ├── MessageBubbleView.swift    # Bubble rendering + attachments
-│   ├── MessageContentView.swift   # Markdown + code blocks
-│   ├── Settings/
-│   │   ├── APIKeyInputView.swift
-│   │   ├── ModelSelectionCardView.swift
-│   │   ├── OnDeviceSettingsView.swift
-│   │   ├── ResourcesCardView.swift
-│   │   ├── SettingsModeToggle.swift
-│   │   └── TestConnectionButtonView.swift
-│   ├── SettingsView.swift         # Cloud + On-device settings
-│   ├── SimpleChatView.swift       # Chat UI + per-chat model switching + export
-│   ├── ThinkingBlockView.swift    # AI thinking/reasoning display
-│   └── ToastView.swift            # Toast notification popups
-└── Extensions/
-    ├── Color+Theme.swift
-    ├── Compatibility+Extensions.swift
-    └── View+Extensions.swift
+## Build From Source
+```bash
+git clone https://github.com/Robert-Conover/Dualo.git
+cd Dualo
+open Dualo.xcodeproj
 ```
 
-## Built-in model lists
+Then select a simulator or device in Xcode and run the `Dualo` scheme.
 
-### Cloud (curated defaults)
+## Run Tests
+```bash
+xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
+```
 
-OpenAI:
-- `gpt-5.2` (default)
-- `gpt-5-mini`
-- `gpt-5-nano`
-- `o3`
-- `o4-mini`
-- `gpt-4.1`
+## Under The Hood
+Dualo uses a simple split architecture:
 
-### Local (GGUF)
+`HomeView` / `SimpleChatView`  
+↓  
+`ChatViewModel`  
+↓  
+`APIService` or `GGUFService`  
+↓  
+`ConversationManager`
 
-Local models are defined in `Dualo/Models/LocalModel.swift` and downloaded directly from Hugging Face (GGUF files). The catalog includes small/mobile-friendly options like Qwen, Gemma, Llama, Phi, and Mistral variants.
+Key implementation details:
 
-## Troubleshooting
+- `APIService` uses `URLSession.bytes(for:)` for incremental SSE streaming
+- `GGUFService` streams local tokens via `LLM.swift`
+- Both backends surface output through `AsyncThrowingStream<String, Error>`
+- `ConversationManager` persists each chat as a JSON file
+- `ChatViewModel` throttles UI and disk writes during streaming
 
-- **“Please configure your API settings first”**: Open Settings → Cloud AI, set an API key, and pick a model.
-- **Image requests fail**: Ensure the chosen cloud model supports vision/image input.
-- **Local model won’t load / crashes**: Pick a smaller GGUF model (device RAM matters), and ensure enough free storage.
-- **Downloads fail**: Check connectivity and try again; Hugging Face hosting may throttle large downloads.
-- **Rate limiting**: Wait and retry, or check your provider plan limits.
+## Current Status
+Dualo is already functional end to end:
+
+- Chat with OpenAI models
+- Download and run GGUF models offline
+- Stream replies in real time
+- Attach images to cloud prompts
+- Export conversations as PDF, Markdown, or text
+- Store credentials securely in Keychain
+- Manage multiple saved conversations locally
 
 ## License
-
-This project appears intended for educational/personal use. Review OpenAI terms before using in production.
+This project is not yet licensed. All rights reserved.

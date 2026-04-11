@@ -52,10 +52,13 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 ### File Structure
 
 - `Models/` - Data models (Conversation, Message, APIConfiguration, LocalModel)
-- `Services/` - Business logic (API calls, persistence, export, keychain)
+- `Services/` - Business logic: the singletons above plus supporting services (`ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
 - `ViewModels/` - ChatViewModel (streaming, message state)
-- `Views/` - SwiftUI views (HomeView, SimpleChatView, Settings, etc.)
-- `Extensions/` - Theme colors, view modifiers
+- `Views/` - SwiftUI views, organized into `Chat/`, `Components/`, and `Settings/` subfolders (plus `HomeView`, `MainTabView`, `SimpleChatView`, `ConversationsSheetView` at the root)
+- `DI/` - `DependencyContainer` (main-actor) used to inject service implementations for tests
+- `Protocols/` - `ServiceProtocols.swift` — protocol definitions for all injected services
+- `Utilities/` - `HapticFeedback`
+- `Extensions/` - Theme colors, view modifiers, compatibility shims
 
 ### Constants
 
