@@ -42,11 +42,13 @@ Dualo is a native SwiftUI chat app that lets you talk to **OpenAI cloud models**
 
 ### Configure Cloud AI
 
+Settings is a single scrollable page with grouped sections.
+
 1. Open **Settings** (gear icon)
-2. Choose **Cloud AI**
-3. Enter your OpenAI API key
-4. Select a default model
-5. Use **Test Connection** to verify your setup
+2. Scroll to the **Cloud AI** section
+3. Enter your OpenAI API key (it's saved automatically to Keychain after a short debounce)
+4. Tap **Test Connection** to verify your setup
+5. Pick a model per-chat from the model picker on the Home screen
 
 Get API keys:
 - **OpenAI**: `https://platform.openai.com`
@@ -54,10 +56,9 @@ Get API keys:
 ### Configure On-Device (GGUF)
 
 1. Open **Settings**
-2. Choose **On-Device**
-3. Tap **Manage** to open **Local Models**
-4. Download a model (large downloads; Wi‑Fi recommended)
-5. Back in the chat model picker, select the downloaded model under **Local Models**
+2. In the **On-Device Models** section, tap **Manage models** (or **See all N models**) to open **Local Models**
+3. Download a model (large downloads; Wi‑Fi recommended)
+4. Back on the Home screen, select the downloaded model from the chat model picker under **Local Models**
 
 Notes:
 - Local inference is **offline**. (No messages leave the device.)
@@ -85,14 +86,14 @@ Dualo/
 ├── DualoApp.swift                 # App entry point
 ├── Constants.swift                # App-wide constants / strings
 ├── DI/
-│   └── DependencyContainer.swift  # Dependency injection container
+│   └── DependencyContainer.swift  # Dependency injection container (main-actor)
+├── Protocols/
+│   └── ServiceProtocols.swift     # Service protocols for DI / testing
 ├── Models/
 │   ├── APIConfiguration.swift     # Provider configs (OpenAI/Local)
 │   ├── Conversation.swift         # Conversation model (provider + model per chat)
 │   ├── Message.swift              # Message model + image attachments
 │   └── LocalModel.swift           # GGUF catalog + template types
-├── Protocols/
-│   └── ServiceProtocols.swift     # Service protocol definitions
 ├── Services/
 │   ├── APIService.swift           # Cloud API calls + SSE streaming (+ image payloads)
 │   ├── ChatExportService.swift    # PDF/Markdown/Text export
@@ -110,36 +111,34 @@ Dualo/
 │   └── MessageFormatters/
 │       ├── MessageFormatterProtocol.swift
 │       └── OpenAIMessageFormatter.swift
-├── Utilities/
-│   └── HapticFeedback.swift       # Haptic feedback utilities
 ├── ViewModels/
 │   └── ChatViewModel.swift        # Send/stream/stop + persistence throttling
 ├── Views/
+│   ├── HomeView.swift             # Home screen + model picker + composer
+│   ├── MainTabView.swift          # Tab-based navigation
+│   ├── SimpleChatView.swift       # Chat UI + per-chat model switching + export
+│   ├── ConversationsSheetView.swift # Search/rename/delete conversations
 │   ├── Chat/
 │   │   ├── ChatInputBar.swift     # Message input + attachments
-│   │   └── MessageListView.swift  # Scrollable message list
-│   ├── CodeBlockView.swift        # Monospace code blocks + copy
+│   │   ├── CodeBlockView.swift    # Monospace code blocks + copy
+│   │   ├── MessageBubbleView.swift # Bubble rendering + attachments
+│   │   ├── MessageContentView.swift # Markdown + code blocks
+│   │   ├── MessageListView.swift  # Scrollable message list
+│   │   └── ThinkingBlockView.swift # AI thinking/reasoning display
 │   ├── Components/
-│   │   ├── ContextUsageIndicator.swift   # Context window usage UI
-│   │   ├── ImageAttachmentView.swift     # Inline + fullscreen image viewer
-│   │   └── LocalModelStreamingIndicator.swift # Local model streaming status
-│   ├── ConversationsSheetView.swift # Search/rename/delete conversations
-│   ├── HomeView.swift             # Home screen + model picker + composer
-│   ├── LocalModelsView.swift      # Local model download management UI
-│   ├── MainTabView.swift          # Tab-based navigation
-│   ├── MessageBubbleView.swift    # Bubble rendering + attachments
-│   ├── MessageContentView.swift   # Markdown + code blocks
-│   ├── Settings/
-│   │   ├── APIKeyInputView.swift
-│   │   ├── ModelSelectionCardView.swift
-│   │   ├── OnDeviceSettingsView.swift
-│   │   ├── ResourcesCardView.swift
-│   │   ├── SettingsModeToggle.swift
-│   │   └── TestConnectionButtonView.swift
-│   ├── SettingsView.swift         # Cloud + On-device settings
-│   ├── SimpleChatView.swift       # Chat UI + per-chat model switching + export
-│   ├── ThinkingBlockView.swift    # AI thinking/reasoning display
-│   └── ToastView.swift            # Toast notification popups
+│   │   ├── ContextUsageIndicator.swift      # Context window usage UI
+│   │   ├── ImageAttachmentView.swift        # Inline + fullscreen image viewer
+│   │   ├── LocalModelStreamingIndicator.swift # Local model streaming status
+│   │   └── ToastView.swift                  # Toast notification popups
+│   └── Settings/
+│       ├── SettingsView.swift            # Unified settings page (Cloud + On-Device sections)
+│       ├── SettingsRow.swift             # Shared settings row components
+│       ├── APIKeyInputView.swift         # OpenAI API key entry + validation
+│       ├── TestConnectionButtonView.swift # Cloud connection test UI
+│       ├── ResourcesCardView.swift       # Provider resource links
+│       └── LocalModelsView.swift         # Local model download management UI
+├── Utilities/
+│   └── HapticFeedback.swift       # Haptic feedback utilities
 └── Extensions/
     ├── Color+Theme.swift
     ├── Compatibility+Extensions.swift
