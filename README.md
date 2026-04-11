@@ -1,11 +1,11 @@
 Dualo — iOS Chat App
 ====================
 
-Dualo is a native SwiftUI chat app that lets you talk to **cloud models** (Anthropic + OpenAI) and **run GGUF models fully on-device** (via llama.cpp through `LLM.swift`).
+Dualo is a native SwiftUI chat app that lets you talk to **OpenAI cloud models** and **run GGUF models fully on-device** (via llama.cpp through `LLM.swift`).
 
 ## Features
 
-- **Cloud providers (Anthropic + OpenAI)**: Per-chat provider + model selection, with streaming responses.
+- **OpenAI + local model selection**: Per-chat model selection with streaming responses.
 - **On-device local models (GGUF)**: Download small GGUF models from Hugging Face and run them offline for full privacy.
 - **Image attachments (Cloud)**: Attach photos from the library or camera (multiple images supported) and send them with your prompt.
 - **Conversation management**: Multiple chats, rename/delete, search, and automatic persistence.
@@ -29,7 +29,7 @@ Dualo is a native SwiftUI chat app that lets you talk to **cloud models** (Anthr
 
 - **iOS**: 26+ (uses modern SwiftUI APIs such as `NavigationStack` and `glassEffect`)
 - **Xcode**: A version that includes the iOS 26 SDK
-- **Cloud usage**: An API key for Anthropic and/or OpenAI
+- **Cloud usage**: An OpenAI API key
 - **Local usage**: Sufficient device **RAM** + **storage** for the chosen GGUF model (the app includes the `com.apple.developer.kernel.increased-memory-limit` entitlement)
 
 ## Getting started
@@ -40,16 +40,15 @@ Dualo is a native SwiftUI chat app that lets you talk to **cloud models** (Anthr
 2. Select a simulator or device
 3. Build & run (Cmd+R)
 
-### Configure Cloud AI (Anthropic/OpenAI)
+### Configure Cloud AI
 
 1. Open **Settings** (gear icon)
 2. Choose **Cloud AI**
-3. Pick **Anthropic** or **OpenAI**, then enter your API key
+3. Enter your OpenAI API key
 4. Select a default model
 5. Use **Test Connection** to verify your setup
 
 Get API keys:
-- **Anthropic**: `https://console.anthropic.com`
 - **OpenAI**: `https://platform.openai.com`
 
 ### Configure On-Device (GGUF)
@@ -76,7 +75,7 @@ Images are uploaded as base64 to the selected provider using that provider’s m
 
 - **Conversations**: Stored locally as JSON files under the app’s Documents directory (`Documents/Conversations/…`).
 - **API keys**: Stored in **Keychain** (never committed to source).
-- **Cloud**: Messages (and attached images) are sent to Anthropic/OpenAI over HTTPS.
+- **Cloud**: Messages (and attached images) are sent to OpenAI over HTTPS.
 - **Local**: Prompts/responses remain on-device.
 
 ## Project structure (high level)
@@ -88,7 +87,7 @@ Dualo/
 ├── DI/
 │   └── DependencyContainer.swift  # Dependency injection container
 ├── Models/
-│   ├── APIConfiguration.swift     # Provider configs (Anthropic/OpenAI/Local)
+│   ├── APIConfiguration.swift     # Provider configs (OpenAI/Local)
 │   ├── Conversation.swift         # Conversation model (provider + model per chat)
 │   ├── Message.swift              # Message model + image attachments
 │   └── LocalModel.swift           # GGUF catalog + template types
@@ -109,7 +108,6 @@ Dualo/
 │   ├── ModelUtilities.swift       # Model-related utility functions
 │   ├── NetworkError.swift         # Network error types
 │   └── MessageFormatters/
-│       ├── AnthropicMessageFormatter.swift
 │       ├── MessageFormatterProtocol.swift
 │       └── OpenAIMessageFormatter.swift
 ├── Utilities/
@@ -135,7 +133,6 @@ Dualo/
 │   │   ├── APIKeyInputView.swift
 │   │   ├── ModelSelectionCardView.swift
 │   │   ├── OnDeviceSettingsView.swift
-│   │   ├── ProviderCardView.swift
 │   │   ├── ResourcesCardView.swift
 │   │   ├── SettingsModeToggle.swift
 │   │   └── TestConnectionButtonView.swift
@@ -153,17 +150,13 @@ Dualo/
 
 ### Cloud (curated defaults)
 
-Anthropic:
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229` (default)
-- `claude-3-haiku-20240307`
-
 OpenAI:
-- `gpt-4-turbo-preview` (default)
-- `gpt-4o`
-- `gpt-5`
+- `gpt-5.2` (default)
 - `gpt-5-mini`
 - `gpt-5-nano`
+- `o3`
+- `o4-mini`
+- `gpt-4.1`
 
 ### Local (GGUF)
 
@@ -179,4 +172,4 @@ Local models are defined in `Dualo/Models/LocalModel.swift` and downloaded direc
 
 ## License
 
-This project appears intended for educational/personal use. Review Anthropic/OpenAI terms before using in production.
+This project appears intended for educational/personal use. Review OpenAI terms before using in production.

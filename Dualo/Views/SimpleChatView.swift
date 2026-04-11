@@ -30,7 +30,7 @@ struct SimpleChatView: View {
     @State private var exportErrorMessage = ""
     @State private var currentTitle = ""
     @State private var currentModel = ""
-    @State private var currentProvider: APIProvider = .anthropic
+    @State private var currentProvider: APIProvider = .openai
     @State private var isInitialLoad = true
 
     // Image picker state
@@ -401,7 +401,7 @@ struct SimpleChatView: View {
     
     @ViewBuilder
     private var cloudProvidersMenuSection: some View {
-        ForEach([APIProvider.anthropic, APIProvider.openai], id: \.self) { provider in
+        ForEach([APIProvider.openai], id: \.self) { provider in
             Section(provider.displayName) {
                 ForEach(provider.availableModels, id: \.self) { model in
                     Button(action: {
@@ -569,17 +569,7 @@ struct SimpleChatView: View {
         // Update the ChatViewModel configuration to use the new provider and model
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                var providerConfig: APIConfiguration?
-                switch provider {
-                case .anthropic:
-                    providerConfig = configs.anthropic
-                case .openai:
-                    providerConfig = configs.openai
-                case .local:
-                    providerConfig = configs.local
-                }
-                
-                if let existingConfig = providerConfig {
+                if let existingConfig = configs.configuration(for: provider) {
                     let newConfig = APIConfiguration(
                         provider: provider,
                         apiKey: existingConfig.apiKey,

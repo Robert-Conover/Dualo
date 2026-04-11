@@ -30,7 +30,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         if let existingProvider = try? container.decode(APIProvider.self, forKey: .provider),
            let existingModel = try? container.decode(String.self, forKey: .model) {
             provider = existingProvider
-            model = existingModel
+            model = APIProvider.sanitizedModel(existingModel, for: existingProvider)
         } else {
             // Migration: use current defaults for existing conversations
             let (defaultProvider, defaultModel) = Self.getCurrentDefaults()
@@ -72,7 +72,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         }
         
         // Fallback to default values
-        let defaultProvider = APIProvider.anthropic
+        let defaultProvider = APIProvider.openai
         return (defaultProvider, defaultProvider.defaultModel)
     }
     

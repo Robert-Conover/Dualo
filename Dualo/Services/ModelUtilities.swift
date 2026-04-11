@@ -14,7 +14,7 @@ enum ModelUtilities {
     
     /// Returns a user-friendly display name for a model identifier
     /// - Parameters:
-    ///   - model: The model identifier (e.g., "claude-3-sonnet-20240229")
+    ///   - model: The model identifier (e.g., "gpt-5.2")
     ///   - localModels: Available local models to check against
     /// - Returns: A formatted display name (e.g., "Claude 3 Sonnet")
     static func displayName(for model: String, localModels: [LocalModel] = []) -> String {
@@ -25,22 +25,20 @@ enum ModelUtilities {
         
         // Map cloud model identifiers to friendly names
         switch model {
-        case let m where m.contains("claude-3-opus"):
-            return "Claude 3 Opus"
-        case let m where m.contains("claude-3-sonnet"):
-            return "Claude 3 Sonnet"
-        case let m where m.contains("claude-3-haiku"):
-            return "Claude 3 Haiku"
-        case "gpt-4-turbo-preview":
-            return "GPT-4 Turbo"
-        case "gpt-4o":
-            return "GPT-4o"
+        case "gpt-5.2":
+            return "GPT-5.2"
         case "gpt-5":
             return "GPT-5"
         case "gpt-5-mini":
             return "GPT-5 Mini"
         case "gpt-5-nano":
             return "GPT-5 Nano"
+        case "o3":
+            return "o3"
+        case "o4-mini":
+            return "o4-mini"
+        case "gpt-4.1":
+            return "GPT-4.1"
         default:
             return model
         }
@@ -53,7 +51,7 @@ enum ModelUtilities {
     /// - Returns: SF Symbol name string
     static func icon(for provider: APIProvider) -> String {
         switch provider {
-        case .anthropic, .openai:
+        case .openai:
             return SystemImages.cloudFill
         case .local:
             return SystemImages.iphone
@@ -76,16 +74,12 @@ enum ModelUtilities {
         // Cloud providers need API keys
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                let providerConfig: APIConfiguration?
                 switch provider {
-                case .anthropic:
-                    providerConfig = configs.anthropic
                 case .openai:
-                    providerConfig = configs.openai
+                    return configs.openai?.apiKey.isEmpty == false
                 case .local:
                     return !downloadedModels.isEmpty
                 }
-                return providerConfig?.apiKey.isEmpty == false
             }
         } catch {
             print("Failed to check provider configuration: \(error)")
@@ -93,4 +87,3 @@ enum ModelUtilities {
         return false
     }
 }
-

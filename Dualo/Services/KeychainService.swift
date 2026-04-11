@@ -78,9 +78,6 @@ class KeychainService: KeychainServicing {
     
     func saveProviderConfigurations(_ configs: ProviderConfigurations) throws {
         // Validate all non-nil API keys before storage
-        if let anthropicConfig = configs.anthropic {
-            try validateAPIKey(anthropicConfig.apiKey, for: anthropicConfig.provider)
-        }
         if let openaiConfig = configs.openai {
             try validateAPIKey(openaiConfig.apiKey, for: openaiConfig.provider)
         }
@@ -136,13 +133,6 @@ class KeychainService: KeychainServicing {
         
         // Basic format validation for common API key patterns
         switch provider {
-        case .anthropic:
-            // Only validate if it looks like it might be a complete Anthropic key
-            if trimmedKey.count > 10 { // Allow partial typing
-                guard trimmedKey.hasPrefix(AppConstants.Security.anthropicKeyPrefix) else {
-                    throw KeychainError.invalidAPIKey
-                }
-            }
         case .openai:
             // Only validate if it looks like it might be a complete OpenAI key  
             if trimmedKey.count > 5 { // Allow partial typing

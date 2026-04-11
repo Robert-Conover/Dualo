@@ -13,14 +13,13 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var localModelManager: LocalModelManager
     
-    // Cloud API state (absorbed from CloudAPISettingsView)
-    @State private var selectedProvider: APIProvider = .anthropic
-    @State private var apiKeys: [APIProvider: String] = [:]
+    // Cloud API state
+    @State private var openAIAPIKey = ""
     @State private var saveError: String?
     @State private var debounceTask: Task<Void, Never>?
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
-    @State private var apiKeyValidationErrors: [APIProvider: String] = [:]
+    @State private var apiKeyValidationError: String?
     
     // App version from bundle
     private var appVersion: String {
@@ -30,14 +29,7 @@ struct SettingsView: View {
     }
     
     private var currentAPIKey: String {
-        apiKeys[selectedProvider] ?? ""
-    }
-    
-    private var apiKeyBinding: Binding<String> {
-        Binding(
-            get: { self.apiKeys[self.selectedProvider] ?? "" },
-            set: { self.apiKeys[self.selectedProvider] = $0 }
-        )
+        openAIAPIKey
     }
     
     var body: some View {
@@ -225,16 +217,11 @@ struct SettingsView: View {
     
     private var cloudAISection: some View {
         Section {
-            // Provider picker rows
-            ForEach([APIProvider.anthropic, .openai], id: \.self) { provider in
-                providerRow(provider)
-            }
-            
             // API Key input
             APIKeyInputView(
-                provider: selectedProvider,
-                apiKey: apiKeyBinding,
-                validationError: apiKeyValidationErrors[selectedProvider],
+                provider: .openai,
+                apiKey: $openAIAPIKey,
+                validationError: apiKeyValidationError,
                 onKeyChange: handleAPIKeyChange
             )
             .listRowInsets(EdgeInsets())
@@ -258,67 +245,12 @@ struct SettingsView: View {
             .listRowBackground(Color.clear)
             
             // Resources link
-            ResourcesCardView(provider: selectedProvider)
+            ResourcesCardView()
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
         } header: {
             Text("Cloud AI")
         }
-    }
-    
-    private func providerRow(_ provider: APIProvider) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                selectedProvider = provider
-            }
-            handleProviderChange(provider)
-        } label: {
-            HStack(spacing: 12) {
-                // Provider icon
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: provider == .anthropic
-                                    ? [.orange.opacity(0.2), .pink.opacity(0.15)]
-                                    : [.green.opacity(0.2), .mint.opacity(0.15)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 32, height: 32)
-                    
-                    Image(systemName: provider == .anthropic ? "brain" : "sparkles")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(provider == .anthropic ? .orange : .green)
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.displayName)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                    
-                    // Status badge
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(isAPIKeyValid(apiKeys[provider] ?? "", for: provider) ? Color.green : Color.orange)
-                            .frame(width: 6, height: 6)
-                        Text(isAPIKeyValid(apiKeys[provider] ?? "", for: provider) ? "Ready" : "Setup needed")
-                            .font(.caption2)
-                            .foregroundStyle(isAPIKeyValid(apiKeys[provider] ?? "", for: provider) ? .green : .orange)
-                    }
-                }
-                
-                Spacer()
-                
-                if selectedProvider == provider {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.blue)
-                }
-            }
-        }
-        .buttonStyle(.plain)
     }
     
     // MARK: - Cloud API Helpers (from CloudAPISettingsView)
@@ -327,11 +259,7 @@ struct SettingsView: View {
         debounceTask?.cancel()
         connectionTestResult = nil
         
-        if let error = validateAPIKeyFormat(newKey, for: selectedProvider) {
-            apiKeyValidationErrors[selectedProvider] = error
-        } else {
-            apiKeyValidationErrors[selectedProvider] = nil
-        }
+        apiKeyValidationError = validateAPIKeyFormat(newKey)
         
         debounceTask = Task { @MainActor in
             do {
@@ -346,29 +274,11 @@ struct SettingsView: View {
         }
     }
     
-    private func handleProviderChange(_ newProvider: APIProvider) {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
-        
-        connectionTestResult = nil
-        
-        let newKey = apiKeys[newProvider] ?? ""
-        if let error = validateAPIKeyFormat(newKey, for: newProvider) {
-            apiKeyValidationErrors[newProvider] = error
-        } else {
-            apiKeyValidationErrors[newProvider] = nil
-        }
-    }
-    
     private func loadAPIKeys() {
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                if let anthropicConfig = configs.anthropic {
-                    apiKeys[.anthropic] = anthropicConfig.apiKey
-                }
-                
                 if let openaiConfig = configs.openai {
-                    apiKeys[.openai] = openaiConfig.apiKey
+                    openAIAPIKey = openaiConfig.apiKey
                 }
             }
         } catch {
@@ -377,18 +287,18 @@ struct SettingsView: View {
     }
     
     private func saveAPIKey() {
-        let apiKey = apiKeys[selectedProvider] ?? ""
+        let apiKey = openAIAPIKey
         
-        guard apiKey.isEmpty || isAPIKeyValid(apiKey, for: selectedProvider) else { return }
+        guard apiKey.isEmpty || isAPIKeyValid(apiKey) else { return }
         
         do {
             var configs = try KeychainService.shared.loadProviderConfigurations() ?? ProviderConfigurations()
             
-            let existingConfig = selectedProvider == .anthropic ? configs.anthropic : configs.openai
-            let model = existingConfig?.model ?? selectedProvider.defaultModel
+            let existingConfig = configs.openai
+            let model = existingConfig?.model ?? APIProvider.openai.defaultModel
             
             let config = APIConfiguration(
-                provider: selectedProvider,
+                provider: .openai,
                 apiKey: apiKey,
                 model: model
             )
@@ -404,43 +314,23 @@ struct SettingsView: View {
         }
     }
     
-    private func isAPIKeyValid(_ apiKey: String, for provider: APIProvider) -> Bool {
+    private func isAPIKeyValid(_ apiKey: String) -> Bool {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedKey.isEmpty else { return false }
-        
-        switch provider {
-        case .anthropic:
-            return trimmedKey.hasPrefix(AppConstants.Security.anthropicKeyPrefix) && trimmedKey.count > 20
-        case .openai:
-            return trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) && trimmedKey.count > 20
-        case .local:
-            return true
-        }
+
+        return trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) && trimmedKey.count > 20
     }
     
-    private func validateAPIKeyFormat(_ apiKey: String, for provider: APIProvider) -> String? {
-        if provider == .local {
-            return nil
-        }
-        
+    private func validateAPIKeyFormat(_ apiKey: String) -> String? {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if trimmedKey.isEmpty {
             return nil
         }
-        
-        switch provider {
-        case .anthropic:
-            if !trimmedKey.hasPrefix(AppConstants.Security.anthropicKeyPrefix) {
-                return "Anthropic API keys must start with '\(AppConstants.Security.anthropicKeyPrefix)'"
-            }
-        case .openai:
-            if !trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) {
-                return "OpenAI API keys must start with '\(AppConstants.Security.openaiKeyPrefix)'"
-            }
-        case .local:
-            return nil
+
+        if !trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) {
+            return "OpenAI API keys must start with '\(AppConstants.Security.openaiKeyPrefix)'"
         }
         
         return nil
@@ -456,9 +346,9 @@ struct SettingsView: View {
         Task {
             do {
                 let config = APIConfiguration(
-                    provider: selectedProvider,
-                    apiKey: apiKeys[selectedProvider] ?? "",
-                    model: selectedProvider.defaultModel
+                    provider: .openai,
+                    apiKey: openAIAPIKey,
+                    model: APIProvider.openai.defaultModel
                 )
                 
                 let _ = try await APIService.shared.sendMessage(
