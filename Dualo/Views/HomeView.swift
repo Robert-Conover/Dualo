@@ -200,7 +200,7 @@ struct HomeView: View {
     private var modelSelector: some View {
         Menu {
             // Cloud providers
-            ForEach([APIProvider.anthropic, APIProvider.openai], id: \.self) { provider in
+            ForEach([APIProvider.openai], id: \.self) { provider in
                 Section(provider.displayName) {
                     ForEach(provider.availableModels, id: \.self) { model in
                         Button(action: {
@@ -497,17 +497,7 @@ struct HomeView: View {
         // Get the API key for the provider
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                var providerConfig: APIConfiguration?
-                switch provider {
-                case .anthropic:
-                    providerConfig = configs.anthropic
-                case .openai:
-                    providerConfig = configs.openai
-                case .local:
-                    providerConfig = configs.local
-                }
-                
-                if let existingConfig = providerConfig {
+                if let existingConfig = configs.configuration(for: provider) {
                     let newConfig = APIConfiguration(
                         provider: provider,
                         apiKey: existingConfig.apiKey,

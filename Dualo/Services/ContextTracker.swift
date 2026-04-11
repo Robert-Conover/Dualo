@@ -62,7 +62,7 @@ class ContextTracker: ObservableObject, ContextTracking {
     
     @Published private(set) var estimatedTokens: Int = 0
     @Published private(set) var contextLimit: Int = 0
-    @Published private(set) var currentProvider: APIProvider = .anthropic
+    @Published private(set) var currentProvider: APIProvider = .openai
     @Published private(set) var currentModel: String = ""
     
     // MARK: - Token Estimation Constants
@@ -102,7 +102,7 @@ class ContextTracker: ObservableObject, ContextTracking {
         
         // Get context limit based on provider
         switch provider {
-        case .anthropic, .openai:
+        case .openai:
             contextLimit = APIProvider.contextSize(for: model, provider: provider)
         case .local:
             // Look up local model context size, capped to the actual mobile limit used by GGUFService
@@ -165,4 +165,3 @@ class ContextTracker: ObservableObject, ContextTracking {
         usageInfo.isAtLimit
     }
 }
-

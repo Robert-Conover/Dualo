@@ -24,14 +24,11 @@ enum AppConstants {
     enum API {
         // Token limits
         static let defaultMaxTokens = 4096
-        static let gpt5MaxTokens = 32768
-        
+        static let reasoningModelMaxTokens = 32768
+
         // Request parameters
         static let defaultTemperature = 0.7
-        static let gpt5ReasoningEffort = "medium"
-        
-        // API Headers
-        static let anthropicVersionHeader = "2023-06-01"
+        static let reasoningModelEffort = "medium"
     }
     
     // MARK: - UI Configuration
@@ -79,7 +76,6 @@ enum AppConstants {
     // MARK: - Security
     enum Security {
         // API Key validation patterns
-        static let anthropicKeyPrefix = "sk-ant-"
         static let openaiKeyPrefix = "sk-"
         
         // Keychain configuration

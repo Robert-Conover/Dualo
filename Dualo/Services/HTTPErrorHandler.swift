@@ -10,20 +10,13 @@ import Foundation
 /// Centralized HTTP error handling for API requests
 struct HTTPErrorHandler {
 
-    /// API provider type for error message parsing
-    enum Provider {
-        case anthropic
-        case openai
-    }
-
     /// Handles HTTP response errors and throws appropriate NetworkError
     ///
     /// - Parameters:
     ///   - response: The HTTP response from the API request
     ///   - data: The response data that may contain error details
-    ///   - provider: The API provider for parsing provider-specific error formats
     /// - Throws: NetworkError with appropriate error type and detailed message
-    static func handleResponse(_ response: HTTPURLResponse, data: Data, provider: Provider) throws {
+    static func handleResponse(_ response: HTTPURLResponse, data: Data) throws {
         // Handle specific HTTP status codes
         if response.statusCode == 401 {
             throw NetworkError.invalidAPIKey
@@ -42,8 +35,7 @@ struct HTTPErrorHandler {
                     detailedMessage += " (Type: \(type))"
                 }
 
-                // Add error code for OpenAI (not present in Anthropic responses)
-                if provider == .openai, let code = error["code"] as? String {
+                if let code = error["code"] as? String {
                     detailedMessage += " (Code: \(code))"
                 }
 

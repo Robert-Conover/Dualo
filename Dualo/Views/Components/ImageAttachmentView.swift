@@ -10,31 +10,38 @@ import SwiftUI
 struct ImageAttachmentView: View {
     let attachment: MessageAttachment
     @State private var isFullScreen = false
+    @State private var decodedImage: UIImage?
 
     var body: some View {
-        if let imageData = Data(base64Encoded: attachment.data),
-           let uiImage = UIImage(data: imageData) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: 200, maxHeight: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .onTapGesture {
-                    isFullScreen = true
-                }
-                .fullScreenCover(isPresented: $isFullScreen) {
-                    FullScreenImageView(image: uiImage, isPresented: $isFullScreen)
-                }
-        } else {
-            // Fallback for invalid image data
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.secondary.opacity(0.2))
-                .frame(width: 100, height: 100)
-                .overlay {
-                    Image(systemName: "photo")
-                        .font(.title)
-                        .foregroundStyle(.secondary)
-                }
+        Group {
+            if let uiImage = decodedImage {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 200, maxHeight: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .onTapGesture {
+                        isFullScreen = true
+                    }
+                    .fullScreenCover(isPresented: $isFullScreen) {
+                        FullScreenImageView(image: uiImage, isPresented: $isFullScreen)
+                    }
+            } else {
+                // Fallback / loading placeholder
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: 100, height: 100)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+        }
+        .task(id: attachment.data) {
+            if let imageData = Data(base64Encoded: attachment.data) {
+                decodedImage = UIImage(data: imageData)
+            }
         }
     }
 }

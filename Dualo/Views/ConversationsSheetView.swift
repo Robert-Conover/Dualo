@@ -226,41 +226,45 @@ struct ConversationsSheetView: View {
         .scrollContentBackground(.hidden)
     }
     
-    private func timeString(from date: Date) -> String {
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter
+    }()
+
+    private func timeString(from date: Date) -> String {
+        Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
     
     // MARK: - Model Badge
     
     private func modelBadge(for conversation: Conversation) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: conversation.provider == .anthropic ? "brain" : "sparkles")
+        let isLocal = conversation.provider == .local
+
+        return HStack(spacing: 4) {
+            Image(systemName: isLocal ? "iphone" : "sparkles")
                 .font(.system(size: 9, weight: .semibold))
             Text(shortModelName(conversation.model))
                 .font(.system(size: 10, weight: .medium))
         }
-        .foregroundStyle(conversation.provider == .anthropic ? .orange : .green)
+        .foregroundStyle(isLocal ? .blue : .green)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(conversation.provider == .anthropic ? 
-                      Color.orange.opacity(0.12) : 
-                      Color.green.opacity(0.12))
+                .fill(isLocal ? Color.blue.opacity(0.12) : Color.green.opacity(0.12))
         )
     }
     
     private func shortModelName(_ model: String) -> String {
-        if model.contains("opus") { return "Opus" }
-        if model.contains("sonnet") { return "Sonnet" }
-        if model.contains("haiku") { return "Haiku" }
-        if model.contains("gpt-4o") { return "4o" }
-        if model.contains("gpt-4") { return "GPT-4" }
+        if model.contains("gpt-5.2") { return "5.2" }
         if model.contains("gpt-5-mini") { return "5 Mini" }
         if model.contains("gpt-5-nano") { return "5 Nano" }
+        if model.contains("o3") { return "o3" }
+        if model.contains("o4-mini") { return "o4-mini" }
+        if model.contains("gpt-4.1") { return "4.1" }
         if model.contains("gpt-5") { return "GPT-5" }
+        if model.contains("gpt-4") { return "GPT-4" }
         return String(model.prefix(8))
     }
     
@@ -292,4 +296,3 @@ struct ConversationsSheetView: View {
     )
     .environmentObject(ConversationManager.shared)
 }
-

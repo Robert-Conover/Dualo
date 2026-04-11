@@ -75,21 +75,12 @@ struct APIKeyInputView: View {
 }
 
 #Preview {
-    VStack(spacing: 20) {
-        APIKeyInputView(
-            provider: .anthropic,
-            apiKey: .constant("sk-ant-123456789"),
-            validationError: nil,
-            onKeyChange: { _ in }
-        )
-
-        APIKeyInputView(
-            provider: .openai,
-            apiKey: .constant("invalid-key"),
-            validationError: "OpenAI API keys must start with 'sk-'",
-            onKeyChange: { _ in }
-        )
-    }
+    APIKeyInputView(
+        provider: .openai,
+        apiKey: .constant("invalid-key"),
+        validationError: "OpenAI API keys must start with 'sk-'",
+        onKeyChange: { _ in }
+    )
     .padding()
     .background(Color(.systemGroupedBackground))
 }

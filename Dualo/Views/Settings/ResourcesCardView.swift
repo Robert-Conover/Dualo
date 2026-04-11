@@ -10,11 +10,8 @@ import SwiftUI
 // MARK: - Resources Card View
 
 struct ResourcesCardView: View {
-    let provider: APIProvider
-
     private var providerURL: URL? {
-        let urlString = provider == .anthropic ? "https://console.anthropic.com" : "https://platform.openai.com"
-        return URL(string: urlString)
+        URL(string: "https://platform.openai.com")
     }
 
     var body: some View {
@@ -27,7 +24,7 @@ struct ResourcesCardView: View {
                 Link(destination: url) {
                     HStack {
                         Label {
-                            Text("Get \(provider.displayName) API Key")
+                            Text("Get OpenAI API Key")
                                 .foregroundStyle(.primary)
                         } icon: {
                             Image(systemName: "link")
@@ -56,10 +53,7 @@ struct ResourcesCardView: View {
 }
 
 #Preview {
-    VStack(spacing: 20) {
-        ResourcesCardView(provider: .anthropic)
-        ResourcesCardView(provider: .openai)
-    }
+    ResourcesCardView()
     .padding()
     .background(Color(.systemGroupedBackground))
 }

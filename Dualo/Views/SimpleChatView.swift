@@ -30,7 +30,7 @@ struct SimpleChatView: View {
     @State private var exportErrorMessage = ""
     @State private var currentTitle = ""
     @State private var currentModel = ""
-    @State private var currentProvider: APIProvider = .anthropic
+    @State private var currentProvider: APIProvider = .openai
     @State private var isInitialLoad = true
 
     // Image picker state
@@ -58,7 +58,8 @@ struct SimpleChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .modifier(AlertsModifier(
-                viewModel: viewModel,
+                showError: $viewModel.showError,
+                errorMessage: viewModel.errorMessage,
                 showRenameAlert: $showRenameAlert,
                 newTitle: $newTitle,
                 showExportError: $showExportError,
@@ -400,7 +401,7 @@ struct SimpleChatView: View {
     
     @ViewBuilder
     private var cloudProvidersMenuSection: some View {
-        ForEach([APIProvider.anthropic, APIProvider.openai], id: \.self) { provider in
+        ForEach([APIProvider.openai], id: \.self) { provider in
             Section(provider.displayName) {
                 ForEach(provider.availableModels, id: \.self) { model in
                     Button(action: {
@@ -568,17 +569,7 @@ struct SimpleChatView: View {
         // Update the ChatViewModel configuration to use the new provider and model
         do {
             if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                var providerConfig: APIConfiguration?
-                switch provider {
-                case .anthropic:
-                    providerConfig = configs.anthropic
-                case .openai:
-                    providerConfig = configs.openai
-                case .local:
-                    providerConfig = configs.local
-                }
-                
-                if let existingConfig = providerConfig {
+                if let existingConfig = configs.configuration(for: provider) {
                     let newConfig = APIConfiguration(
                         provider: provider,
                         apiKey: existingConfig.apiKey,
@@ -722,7 +713,8 @@ struct SimpleChatView: View {
 // MARK: - Alerts View Modifier (extracted to reduce body complexity)
 
 private struct AlertsModifier: ViewModifier {
-    @ObservedObject var viewModel: ChatViewModel
+    @Binding var showError: Bool
+    let errorMessage: String
     @Binding var showRenameAlert: Bool
     @Binding var newTitle: String
     @Binding var showExportError: Bool
@@ -730,17 +722,17 @@ private struct AlertsModifier: ViewModifier {
     @Binding var showModelLoadError: Bool
     let modelLoadErrorMessage: String
     let renameChat: (String) -> Void
-    
+
     func body(content: Content) -> some View {
         content
-            .alert("Error", isPresented: $viewModel.showError) {
+            .alert("Error", isPresented: $showError) {
                 Button("OK") {
-                    viewModel.showError = false
+                    showError = false
                     let notificationFeedback = UINotificationFeedbackGenerator()
                     notificationFeedback.notificationOccurred(.error)
                 }
             } message: {
-                Text(viewModel.errorMessage)
+                Text(errorMessage)
             }
             .alert("Rename Chat", isPresented: $showRenameAlert) {
                 TextField("Chat Title", text: $newTitle)

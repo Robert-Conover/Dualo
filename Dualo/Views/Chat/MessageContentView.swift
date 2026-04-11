@@ -12,11 +12,8 @@ struct MessageContentView: View {
     let isUser: Bool
     @State private var showCopyToast = false
     @State private var copiedMessage = ""
-    
-    private var parsedContent: [MessageContentRenderer.ContentType] {
-        MessageContentRenderer.parse(content)
-    }
-    
+    @State private var parsedContent: [MessageContentRenderer.ContentType] = []
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(parsedContent) { section in
@@ -57,6 +54,9 @@ struct MessageContentView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: content) {
+            parsedContent = MessageContentRenderer.parse(content)
+        }
     }
 }
 
