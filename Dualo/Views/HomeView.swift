@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
@@ -485,7 +486,7 @@ struct HomeView: View {
     private func updateModelWithProvider(_ newModel: String, provider: APIProvider) {
         // Safety guard: prevent model switching during generation
         guard !isModelSwitchingDisabled else {
-            print("HomeView: Model switch blocked - loading/generating in progress")
+            Logger.ui.debug("HomeView: Model switch blocked - loading/generating in progress")
             return
         }
         
@@ -512,14 +513,14 @@ struct HomeView: View {
                 }
             }
         } catch {
-            print("Failed to update model selection: \(error)")
+            Logger.config.error("Failed to update model selection: \(String(describing: error), privacy: .public)")
         }
     }
     
     private func selectLocalModel(_ model: LocalModel) {
         // Safety guard: prevent model switching during generation
         guard !isModelSwitchingDisabled else {
-            print("HomeView: Local model switch blocked - loading/generating in progress")
+            Logger.ui.debug("HomeView: Local model switch blocked - loading/generating in progress")
             return
         }
         
@@ -540,7 +541,7 @@ struct HomeView: View {
             configs.setConfiguration(localConfig)
             try KeychainService.shared.saveProviderConfigurations(configs)
         } catch {
-            print("Failed to save local model selection: \(error)")
+            Logger.config.error("Failed to save local model selection: \(String(describing: error), privacy: .public)")
         }
         
         // Load the model in GGUFService
@@ -548,7 +549,7 @@ struct HomeView: View {
             do {
                 try await GGUFService.shared.loadModel(modelId: model.id)
             } catch {
-                print("Failed to load local model: \(error)")
+                Logger.inference.error("Failed to load local model: \(String(describing: error), privacy: .public)")
                 modelLoadErrorMessage = error.localizedDescription
                 showModelLoadError = true
             }

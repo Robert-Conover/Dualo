@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 
 struct Conversation: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
@@ -68,7 +69,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
                 return (currentConfig.provider, currentConfig.model)
             }
         } catch {
-            print("Failed to load current configuration: \(error)")
+            Logger.config.error("Failed to load current configuration: \(String(describing: error), privacy: .public)")
         }
         
         // Fallback to default values

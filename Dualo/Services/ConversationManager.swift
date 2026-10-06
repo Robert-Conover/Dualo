@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import OSLog
 
 /// Holds initial message data when navigating from HomeView to SimpleChatView
 struct PendingChatData {
@@ -74,14 +75,14 @@ class ConversationManager: ObservableObject, ConversationManaging {
         do {
             try fileManager.createDirectory(at: conversationsDirectory, withIntermediateDirectories: true)
         } catch {
-            print("ConversationManager: CRITICAL - Failed to create conversations directory: \(error.localizedDescription)")
+            Logger.conversations.fault("Failed to create conversations directory: \(error.localizedDescription, privacy: .public)")
             storageError = .directoryCreationFailed(error.localizedDescription)
         }
 
         do {
             try fileManager.createDirectory(at: attachmentsDirectory, withIntermediateDirectories: true)
         } catch {
-            print("ConversationManager: CRITICAL - Failed to create attachments directory: \(error.localizedDescription)")
+            Logger.conversations.fault("Failed to create attachments directory: \(error.localizedDescription, privacy: .public)")
             storageError = .directoryCreationFailed(error.localizedDescription)
         }
     }
@@ -145,23 +146,17 @@ class ConversationManager: ObservableObject, ConversationManaging {
                 // Both exist: prefer newer (in-memory wins on tie)
                 if conv.updatedAt >= diskVersion.updatedAt {
                     mergedConversations.append(conv)
-                    #if DEBUG
                     if conv.updatedAt > diskVersion.updatedAt {
-                        print("ConversationManager: Merge - kept in-memory version of \(conv.id) (newer)")
+                        Logger.conversations.debug("Merge - kept in-memory version of \(conv.id, privacy: .public) (newer)")
                     }
-                    #endif
                 } else {
                     mergedConversations.append(diskVersion)
-                    #if DEBUG
-                    print("ConversationManager: Merge - used disk version of \(conv.id) (newer)")
-                    #endif
+                    Logger.conversations.debug("Merge - used disk version of \(conv.id, privacy: .public) (newer)")
                 }
             } else {
                 // Only in memory (e.g., created while loading)
                 mergedConversations.append(conv)
-                #if DEBUG
-                print("ConversationManager: Merge - kept new in-memory conversation \(conv.id)")
-                #endif
+                Logger.conversations.debug("Merge - kept new in-memory conversation \(conv.id, privacy: .public)")
             }
         }
         
@@ -173,9 +168,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
         // Sort by updatedAt descending
         conversations = mergedConversations.sorted { $0.updatedAt > $1.updatedAt }
         
-        #if DEBUG
-        print("ConversationManager: Merge complete - \(conversations.count) conversations")
-        #endif
+        Logger.conversations.debug("Merge complete - \(self.conversations.count) conversations")
     }
     
     /// Synchronous migration helper - runs on background queue
@@ -184,7 +177,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
             return []
         }
         
-        print("ConversationManager: Migrating conversations from UserDefaults to file storage...")
+        Logger.conversations.info("Migrating conversations from UserDefaults to file storage...")
         
         let decoder = JSONDecoder()
         guard let legacyConversations = try? decoder.decode([Conversation].self, from: data) else {
@@ -206,16 +199,17 @@ class ConversationManager: ObservableObject, ConversationManaging {
         }
 
         if !migrationErrors.isEmpty {
-            print("ConversationManager: Migration errors occurred:")
-            migrationErrors.forEach { print("  - \($0)") }
+            for migrationError in migrationErrors {
+                Logger.conversations.error("Migration error: \(migrationError, privacy: .public)")
+            }
         }
 
         // Only remove from UserDefaults if all migrations succeeded
         if migrationErrors.isEmpty {
             UserDefaults.standard.removeObject(forKey: legacyKey)
-            print("ConversationManager: Successfully migrated \(legacyConversations.count) conversations to file storage")
+            Logger.conversations.info("Successfully migrated \(legacyConversations.count) conversations to file storage")
         } else {
-            print("ConversationManager: Keeping UserDefaults -- \(migrationErrors.count) migration errors")
+            Logger.conversations.warning("Keeping UserDefaults -- \(migrationErrors.count) migration errors")
         }
         return legacyConversations
     }
@@ -235,12 +229,12 @@ class ConversationManager: ObservableObject, ConversationManaging {
                     let conversation = try decoder.decode(Conversation.self, from: data)
                     loadedConversations.append(conversation)
                 } catch {
-                    print("ConversationManager: Failed to load \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    Logger.conversations.error("Failed to load \(fileURL.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
                     // Continue loading other files - don't let one corrupt file break everything
                 }
             }
         } catch {
-            print("ConversationManager: Error reading conversations directory: \(error.localizedDescription)")
+            Logger.conversations.error("Error reading conversations directory: \(error.localizedDescription, privacy: .public)")
         }
 
         return loadedConversations
@@ -286,7 +280,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
     }
     
     func selectConversation(_ conversation: Conversation) {
-        print("ConversationManager: selecting conversation \(conversation.id) with \(conversation.messages.count) messages")
+        Logger.conversations.debug("Selecting conversation \(conversation.id, privacy: .public) with \(conversation.messages.count) messages")
         currentConversation = conversation
         saveCurrentConversationID()
     }
@@ -296,9 +290,9 @@ class ConversationManager: ObservableObject, ConversationManaging {
             #if DEBUG
             let oldConversation = conversations[index]
             let reason = determineUpdateReason(old: oldConversation, new: conversation)
-            print("ConversationManager: updating conversation \(conversation.id) - reason: \(reason)")
+            Logger.conversations.debug("Updating conversation \(conversation.id, privacy: .public) - reason: \(reason, privacy: .public)")
             if moveToTop && index != 0 {
-                print("ConversationManager: moving conversation to top (was at index \(index))")
+                Logger.conversations.debug("Moving conversation to top (was at index \(index))")
             }
             #endif
             
@@ -378,7 +372,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
                 let data = try encoder.encode(conversationCopy)
                 try data.write(to: fileURL, options: .atomic)
             } catch {
-                print("ConversationManager: Error saving conversation \(conversationCopy.id.uuidString.prefix(8)): \(error.localizedDescription)")
+                Logger.conversations.error("Error saving conversation \(conversationCopy.id.uuidString.prefix(8), privacy: .public): \(error.localizedDescription, privacy: .public)")
                 // Report save failure to UI on main thread
                 Task { @MainActor in
                     self?.storageError = .saveFailed(conversationCopy.id, error.localizedDescription)
@@ -397,7 +391,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
             } catch let error as NSError {
                 // Ignore "file not found" errors (already deleted or never saved)
                 if error.domain != NSCocoaErrorDomain || error.code != NSFileNoSuchFileError {
-                    print("ConversationManager: Failed to delete \(conversationId.uuidString.prefix(8)): \(error.localizedDescription)")
+                    Logger.conversations.error("Failed to delete \(conversationId.uuidString.prefix(8), privacy: .public): \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

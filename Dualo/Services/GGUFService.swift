@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import LLM
+import OSLog
 
 // MARK: - GGUF Service Error
 
@@ -111,28 +112,28 @@ class GGUFService: ObservableObject, GGUFServicing {
             // Check if the last selected provider was .local
             guard let configs = try KeychainService.shared.loadProviderConfigurations(),
                   configs.selectedProvider == .local else {
-                print("📱 Auto-load skipped: Last provider was not local")
+                Logger.inference.debug("Auto-load skipped: Last provider was not local")
                 return
             }
             
             // Get the selected model ID
             guard let modelId = localModelManager.selectedModelId else {
-                print("📱 Auto-load skipped: No local model selected")
+                Logger.inference.debug("Auto-load skipped: No local model selected")
                 return
             }
             
             // Verify the model is downloaded
             guard let model = localModelManager.availableModels.first(where: { $0.id == modelId }),
                   model.downloadState.isDownloaded else {
-                print("📱 Auto-load skipped: Model not downloaded")
+                Logger.inference.debug("Auto-load skipped: Model not downloaded")
                 return
             }
             
-            print("📱 Auto-loading local model: \(modelId)")
+            Logger.inference.info("Auto-loading local model: \(modelId, privacy: .public)")
             try await loadModel(modelId: modelId)
             
         } catch {
-            print("❌ Auto-load failed: \(error.localizedDescription)")
+            Logger.inference.error("Auto-load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -158,11 +159,11 @@ class GGUFService: ObservableObject, GGUFServicing {
             if fileSize < 1_000_000 { // Less than 1MB is definitely invalid for a GGUF model
                 throw GGUFServiceError.modelLoadFailed("Model file appears to be corrupted (size: \(fileSize) bytes). Please re-download the model.")
             }
-            print("📂 Model file size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))")
+            Logger.inference.debug("Model file size: \(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file), privacy: .public)")
         } catch let error as GGUFServiceError {
             throw error
         } catch {
-            print("⚠️ Could not verify file attributes: \(error)")
+            Logger.inference.warning("Could not verify file attributes: \(String(describing: error), privacy: .public)")
         }
         
         // Validate GGUF file header
@@ -181,7 +182,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         isLoading = true
         errorMessage = nil
         
-        print("🔄 Loading GGUF model from: \(modelPath.path)")
+        Logger.inference.info("Loading GGUF model from: \(modelPath.path, privacy: .public)")
         
         // Determine the template based on model info
         let template = getTemplate(for: modelInfo)
@@ -191,7 +192,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         let maxMobileContext = Int32(AppConstants.LocalModels.maxMobileContextTokens)
         let modelContextSize = Int32(modelInfo?.contextSize ?? AppConstants.LocalModels.maxMobileContextTokens)
         let contextSize = min(modelContextSize, maxMobileContext)
-        print("📐 Using context size: \(contextSize) tokens (model supports \(modelContextSize))")
+        Logger.inference.info("Using context size: \(contextSize) tokens (model supports \(modelContextSize))")
         
         // Load the model using LLM.swift with proper context size
         // The "Compiler failed to build request" error occurs when Metal shaders fail to compile
@@ -205,7 +206,7 @@ class GGUFService: ObservableObject, GGUFServicing {
             3. Insufficient memory - close other apps and try again
             4. Corrupted model file - delete and re-download
             """
-            print("❌ \(errorDetails)")
+            Logger.inference.error("\(errorDetails, privacy: .public)")
             let userFacingError = "Failed to load model. The model file may be incompatible or corrupted. Try deleting and re-downloading it."
             errorMessage = userFacingError
             throw GGUFServiceError.modelLoadFailed(userFacingError)
@@ -218,7 +219,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         loadedModelTemplate = template
         loadedModelContextSize = contextSize
         
-        print("✅ GGUF model loaded successfully!")
+        Logger.inference.info("GGUF model loaded successfully")
         
         isModelLoaded = true
         loadedModelId = modelId
@@ -234,7 +235,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         loadedModelTemplate = nil
         loadedModelContextSize = Int32(AppConstants.LocalModels.maxMobileContextTokens)
         currentConversationId = nil
-        print("🗑️ GGUF model unloaded")
+        Logger.inference.info("GGUF model unloaded")
     }
     
     // MARK: - Text Generation
@@ -288,23 +289,23 @@ class GGUFService: ObservableObject, GGUFServicing {
                 if isNewConversation {
                     // Conversation changed - reset context and load new history
                     // LLM.swift v2.0.1: reset() clears history and resets KV cache
-                    print("🔄 GGUFService: Conversation changed, resetting context")
+                    Logger.inference.debug("Conversation changed, resetting context")
                     existingLLM.reset()
 
                     // Load the new conversation's history (if any)
                     if let history = historyForLLM, !history.isEmpty {
-                        print("📜 GGUFService: Loading \(history.count) history turns for new conversation")
+                        Logger.inference.debug("Loading \(history.count) history turns for new conversation")
                         existingLLM.history = history
                     }
                 } else {
                     // Same conversation - let LLM.swift manage history naturally
                     // Don't touch history - it already has the previous turns
-                    print("💬 GGUFService: Continuing conversation (LLM history: \(existingLLM.history.count) turns)")
+                    Logger.inference.debug("Continuing conversation (LLM history: \(existingLLM.history.count) turns)")
                 }
                 activeLLM = existingLLM
             } else {
                 // First use - create fresh LLM instance
-                print("🔄 GGUFService: Creating new LLM instance (context: \(contextSize) tokens)")
+                Logger.inference.debug("Creating new LLM instance (context: \(contextSize) tokens)")
                 guard let freshLLM = LLM(from: modelPath, template: template, maxTokenCount: contextSize) else {
                     continuation.finish(throwing: GGUFServiceError.modelLoadFailed("Failed to load LLM"))
                     await MainActor.run {
@@ -315,7 +316,7 @@ class GGUFService: ObservableObject, GGUFServicing {
 
                 // Load initial history if provided
                 if let history = historyForLLM, !history.isEmpty {
-                    print("📜 GGUFService: Loading \(history.count) initial history turns")
+                    Logger.inference.debug("Loading \(history.count) initial history turns")
                     freshLLM.history = history
                 }
 
@@ -393,7 +394,7 @@ class GGUFService: ObservableObject, GGUFServicing {
         if isGenerating { stopGeneration() }
         llm?.reset()
         currentConversationId = nil
-        print("🧹 GGUFService: Conversation context cleared")
+        Logger.inference.debug("Conversation context cleared")
     }
 
     /// Build a cleaned copy of LLM history with thinking blocks stripped from bot responses.
@@ -576,12 +577,12 @@ class GGUFService: ObservableObject, GGUFServicing {
         }
         
         let version = versionData.withUnsafeBytes { $0.load(as: UInt32.self) }
-        print("📋 GGUF file version: \(version)")
+        Logger.inference.debug("GGUF file version: \(version)")
         
         // LLM.swift v2.x supports GGUF v3 format (recommended)
         // Older versions (v1, v2) or future versions may not be compatible
         if version < 2 || version > 3 {
-            print("⚠️ Warning: GGUF version \(version) may not be fully supported. LLM.swift works best with GGUF v3.")
+            Logger.inference.warning("GGUF version \(version) may not be fully supported. LLM.swift works best with GGUF v3.")
         }
     }
 }

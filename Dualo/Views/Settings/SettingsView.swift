@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 // MARK: - Settings View
 
@@ -282,7 +283,7 @@ struct SettingsView: View {
                 }
             }
         } catch {
-            print("Failed to load API keys: \(error)")
+            Logger.config.error("Failed to load API keys: \(String(describing: error), privacy: .public)")
         }
     }
     

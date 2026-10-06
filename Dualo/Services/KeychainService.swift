@@ -7,6 +7,7 @@
 
 import Foundation
 import Security
+import OSLog
 
 class KeychainService: KeychainServicing {
     static let shared = KeychainService()
@@ -22,9 +23,7 @@ class KeychainService: KeychainServicing {
         self.service = Bundle.main.bundleIdentifier ?? AppConstants.Security.legacyKeychainService
         self.queryBuilder = KeychainQueryBuilder(service: service)
 
-        #if DEBUG
-        print("KeychainService: Using service identifier: \(service)")
-        #endif
+        Logger.config.debug("Keychain using service identifier: \(self.service, privacy: .public)")
     }
     
     func saveAPIConfiguration(_ config: APIConfiguration) throws {
