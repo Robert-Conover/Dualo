@@ -130,8 +130,7 @@ struct ChatInputBar: View {
             HStack(spacing: 8) {
                 // + button for attachments
                 Button(action: {
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred()
+                    HapticFeedback.light()
                     showAttachmentOptions = true
                 }) {
                     Image(systemName: "plus")
@@ -145,6 +144,7 @@ struct ChatInputBar: View {
                     .font(.body)
                     .lineLimit(1...6)
                     .textFieldStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($isInputFocused)
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .onSubmit {
@@ -155,8 +155,7 @@ struct ChatInputBar: View {
 
                 // Embedded send button
                 Button(action: {
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                    impactFeedback.impactOccurred()
+                    HapticFeedback.medium()
 
                     if viewModel.isStreaming {
                         viewModel.stopStreaming()

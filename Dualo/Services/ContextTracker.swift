@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import OSLog
 
 // MARK: - Context Usage Info
 
@@ -116,7 +117,7 @@ class ContextTracker: ObservableObject, ContextTracking {
             }
         }
         
-        print("📊 ContextTracker configured: \(model) (\(provider.displayName)) - \(contextLimit) tokens")
+        Logger.context.debug("Configured: \(model, privacy: .public) (\(provider.displayName, privacy: .public)) - \(self.contextLimit) tokens")
     }
     
     /// Update token estimate based on conversation messages

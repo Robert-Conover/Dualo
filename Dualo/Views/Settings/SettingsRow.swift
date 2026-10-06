@@ -7,6 +7,26 @@
 
 import SwiftUI
 
+// MARK: - Icon Tile
+
+/// Rounded, tinted icon tile used at the leading edge of settings rows.
+struct SettingsIcon: View {
+    let systemName: String
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(color.opacity(0.15))
+                .frame(width: 28, height: 28)
+
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(color)
+        }
+    }
+}
+
 struct SettingsRow: View {
     let icon: String
     let title: String
@@ -16,16 +36,7 @@ struct SettingsRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Icon with colored background
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(color.opacity(0.15))
-                    .frame(width: 28, height: 28)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(color)
-            }
+            SettingsIcon(systemName: icon, color: color)
             
             // Title and optional subtitle
             VStack(alignment: .leading, spacing: 2) {
@@ -123,16 +134,7 @@ struct SettingsInfoRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Icon with colored background
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(color.opacity(0.15))
-                    .frame(width: 28, height: 28)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(color)
-            }
+            SettingsIcon(systemName: icon, color: color)
             
             Text(title)
                 .font(.body)

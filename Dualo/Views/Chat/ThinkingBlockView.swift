@@ -101,8 +101,7 @@ struct ThinkingBlockView: View {
     }
     
     private func toggleExpanded() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
         
         withAnimation(.spring(response: AppConstants.UI.springAnimationResponse, dampingFraction: AppConstants.UI.springAnimationDamping)) {
             isExpanded.toggle()
@@ -112,8 +111,7 @@ struct ThinkingBlockView: View {
     private func copyContent() {
         UIPasteboard.general.string = content
         
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             showCopyConfirmation = true

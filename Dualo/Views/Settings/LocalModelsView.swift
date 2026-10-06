@@ -251,24 +251,18 @@ struct LocalModelsView: View {
         Task {
             do {
                 try await modelManager.downloadModel(model)
-                
-                let successFeedback = UINotificationFeedbackGenerator()
-                successFeedback.notificationOccurred(.success)
+                HapticFeedback.success()
             } catch {
                 downloadError = error.localizedDescription
                 showDownloadError = true
-                
-                let errorFeedback = UINotificationFeedbackGenerator()
-                errorFeedback.notificationOccurred(.error)
+                HapticFeedback.error()
             }
         }
     }
     
     private func cancelDownload(_ model: LocalModel) {
         modelManager.cancelDownload(model.id)
-        
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
     }
     
     private func confirmDelete(_ model: LocalModel) {
@@ -279,9 +273,7 @@ struct LocalModelsView: View {
     private func deleteModel(_ model: LocalModel) {
         do {
             try modelManager.deleteModel(model)
-            
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
+            HapticFeedback.medium()
         } catch {
             downloadError = error.localizedDescription
             showDownloadError = true

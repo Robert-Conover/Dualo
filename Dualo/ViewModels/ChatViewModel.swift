@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import OSLog
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -78,9 +79,9 @@ class ChatViewModel: ObservableObject {
     }
     
     func loadConversation(_ conversation: Conversation) {
-        print("ChatViewModel: loading conversation \(conversation.id) with \(conversation.messages.count) messages")
+        Logger.chat.debug("Loading conversation \(conversation.id, privacy: .public) with \(conversation.messages.count) messages")
         currentConversationId = conversation.id
-        print("ChatViewModel: viewModel now tracking \(messages.count) messages")
+        Logger.chat.debug("Now tracking \(self.messages.count) messages")
         
         // Get the correct API key for the conversation's provider (not the currently selected provider)
         do {
@@ -93,7 +94,7 @@ class ChatViewModel: ObservableObject {
                     model: conversation.model
                 )
                 apiConfiguration = conversationConfig
-                print("ChatViewModel: updated configuration to use \(conversation.provider.displayName) with \(conversation.model)")
+                Logger.chat.debug("Updated configuration to use \(conversation.provider.displayName, privacy: .public) with \(conversation.model, privacy: .public)")
             } else if conversation.provider == .local {
                 // Local models don't need an API key
                 let localConfig = APIConfiguration(
@@ -102,17 +103,17 @@ class ChatViewModel: ObservableObject {
                     model: conversation.model
                 )
                 apiConfiguration = localConfig
-                print("ChatViewModel: updated configuration for local model \(conversation.model)")
+                Logger.chat.debug("Updated configuration for local model \(conversation.model, privacy: .public)")
                 
                 // Load the local model if not already loaded
                 Task {
                     await loadLocalModelIfNeeded(modelId: conversation.model)
                 }
             } else {
-                print("ChatViewModel: Warning - No configuration found for provider \(conversation.provider.displayName)")
+                Logger.chat.warning("No configuration found for provider \(conversation.provider.displayName, privacy: .public)")
             }
         } catch {
-            print("ChatViewModel: Failed to load provider configuration: \(error)")
+            Logger.chat.error("Failed to load provider configuration: \(String(describing: error), privacy: .public)")
         }
         
         // Configure context tracker for this conversation
@@ -133,7 +134,7 @@ class ChatViewModel: ObservableObject {
         
         // Skip if already loaded
         if ggufService.isModelLoaded && ggufService.loadedModelId == modelId {
-            print("ChatViewModel: Local model \(modelId) already loaded")
+            Logger.chat.debug("Local model \(modelId, privacy: .public) already loaded")
             return
         }
         
@@ -141,15 +142,15 @@ class ChatViewModel: ObservableObject {
         let localModelManager = LocalModelManager.shared
         guard let model = localModelManager.availableModels.first(where: { $0.id == modelId }),
               model.downloadState.isDownloaded else {
-            print("ChatViewModel: Local model \(modelId) not found or not downloaded")
+            Logger.chat.warning("Local model \(modelId, privacy: .public) not found or not downloaded")
             return
         }
         
         do {
-            print("ChatViewModel: Loading local model \(modelId)")
+            Logger.chat.info("Loading local model \(modelId, privacy: .public)")
             try await ggufService.loadModel(modelId: modelId)
         } catch {
-            print("ChatViewModel: Failed to load local model: \(error)")
+            Logger.chat.error("Failed to load local model: \(String(describing: error), privacy: .public)")
         }
     }
     
@@ -221,9 +222,7 @@ class ChatViewModel: ObservableObject {
         guard let conversationId = currentConversationId,
               var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }),
               let messageIndex = conversation.messages.firstIndex(where: { $0.id == streamingMessageId }) else {
-            #if DEBUG
-            print("ChatViewModel: Warning - Unable to update streaming content: conversationId=\(currentConversationId?.uuidString ?? "nil"), streamingMessageId=\(streamingMessageId?.uuidString ?? "nil")")
-            #endif
+            Logger.chat.warning("Unable to update streaming content: conversationId=\(self.currentConversationId?.uuidString ?? "nil", privacy: .public), streamingMessageId=\(self.streamingMessageId?.uuidString ?? "nil", privacy: .public)")
             return
         }
         
@@ -248,9 +247,8 @@ class ChatViewModel: ObservableObject {
             lastPersistTime = now
             lastPersistedLength = currentLength
             
-            #if DEBUG
-            print("ChatViewModel: Persisted streaming content (\(currentLength) chars, reason: \(forcePersist ? "forced" : timeSinceLastPersist >= persistThrottleInterval ? "time" : "chars"))")
-            #endif
+            let reason = forcePersist ? "forced" : timeSinceLastPersist >= persistThrottleInterval ? "time" : "chars"
+            Logger.chat.debug("Persisted streaming content (\(currentLength) chars, reason: \(reason, privacy: .public))")
         }
         
         // Throttle UI updates to avoid excessive view diffing during high-frequency streaming
@@ -287,9 +285,7 @@ class ChatViewModel: ObservableObject {
         addMessageToConversation(placeholderMessage)
         streamingMessageId = placeholderMessage.id
 
-        #if DEBUG
-        print("ChatViewModel: Starting stream for conversation \(currentConversationId?.uuidString ?? "unknown"), message \(placeholderMessage.id)")
-        #endif
+        Logger.chat.debug("Starting stream for conversation \(self.currentConversationId?.uuidString ?? "unknown", privacy: .public), message \(placeholderMessage.id, privacy: .public)")
 
         // Reset throttling state for new stream
         lastPersistTime = .distantPast
@@ -318,30 +314,23 @@ class ChatViewModel: ObservableObject {
                         updateMessageStatus(userMsgId, status: .sent)
 
                         // Haptic feedback on first token - immediate confirmation message was accepted
-                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
-                        sentFeedback.impactOccurred()
+                        HapticFeedback.light()
 
-                        #if DEBUG
-                        print("ChatViewModel: Marked user message as sent (first token received)")
-                        #endif
+                        Logger.chat.debug("Marked user message as sent (first token received)")
                     }
                     
                     // Update UI and persist with throttling (avoids excessive disk writes)
                     updateStreamingMessageContent()
                     
-                    #if DEBUG
                     if streamingBuffer.count % AppConstants.UI.streamingProgressLogInterval == 0 {
-                        print("ChatViewModel: Streaming progress - \(streamingBuffer.count) chars")
+                        Logger.chat.debug("Streaming progress - \(self.streamingBuffer.count) chars")
                     }
-                    #endif
                 }
                 
                 // Force final persist to ensure all content is saved
                 updateStreamingMessageContent(forcePersist: true)
                 
-                #if DEBUG
-                print("ChatViewModel: Streaming completed - final length: \(streamingMessageContent.count) chars")
-                #endif
+                Logger.chat.debug("Streaming completed - final length: \(self.streamingMessageContent.count) chars")
                 
                 // Update context tracker with final message content
                 if let conversationId = currentConversationId,
@@ -373,9 +362,7 @@ class ChatViewModel: ObservableObject {
     }
     
     func stopStreaming() {
-        #if DEBUG
-        print("ChatViewModel: Stopping stream - partial content length: \(streamingBuffer.count)")
-        #endif
+        Logger.chat.debug("Stopping stream - partial content length: \(self.streamingBuffer.count)")
         
         streamingTask?.cancel()
         apiService.stopStreaming()
@@ -384,15 +371,11 @@ class ChatViewModel: ObservableObject {
         // Preserve partial content if any exists
         if !streamingBuffer.isEmpty {
             updateStreamingMessageContent(forcePersist: true) // Force persist on stop
-            #if DEBUG
-            print("ChatViewModel: Preserved partial streaming content (\(streamingBuffer.count) chars)")
-            #endif
+            Logger.chat.debug("Preserved partial streaming content (\(self.streamingBuffer.count) chars)")
         } else if !messages.isEmpty && messages.last?.content.isEmpty == true {
             // Only remove if truly empty
             removeLastMessage()
-            #if DEBUG
-            print("ChatViewModel: Removed empty placeholder message")
-            #endif
+            Logger.chat.debug("Removed empty placeholder message")
         }
         
         // Mark user message based on whether content was received
@@ -401,15 +384,11 @@ class ChatViewModel: ObservableObject {
             if hasMarkedUserMessageSent {
                 // Content was received — user intentionally stopped, keep as sent
                 updateMessageStatus(userMsgId, status: .sent)
-                #if DEBUG
-                print("ChatViewModel: User stopped streaming after receiving content — marked as sent")
-                #endif
+                Logger.chat.debug("User stopped streaming after receiving content — marked as sent")
             } else {
                 // No content received — mark as cancelled
                 updateMessageStatus(userMsgId, status: .cancelled)
-                #if DEBUG
-                print("ChatViewModel: User stopped streaming before content arrived — marked as cancelled")
-                #endif
+                Logger.chat.debug("User stopped streaming before content arrived — marked as cancelled")
             }
         }
         
@@ -419,8 +398,7 @@ class ChatViewModel: ObservableObject {
         streamingUserMessageId = nil  // Clear to prevent background task from overwriting status
         hasMarkedUserMessageSent = false
         
-        let cancelFeedback = UIImpactFeedbackGenerator(style: .light)
-        cancelFeedback.impactOccurred()
+        HapticFeedback.light()
     }
     
     func clearConversation() {
@@ -469,7 +447,7 @@ class ChatViewModel: ObservableObject {
                 apiConfiguration = legacyConfig
             }
         } catch {
-            print("Failed to load API configuration: \(error)")
+            Logger.chat.error("Failed to load API configuration: \(String(describing: error), privacy: .public)")
         }
     }
     
@@ -513,8 +491,7 @@ class ChatViewModel: ObservableObject {
         streamingUserMessageId = nil
         streamingMessageId = nil
 
-        let errorFeedback = UINotificationFeedbackGenerator()
-        errorFeedback.notificationOccurred(.error)
+        HapticFeedback.error()
     }
     
     // MARK: - Message Status Updates
@@ -592,8 +569,7 @@ class ChatViewModel: ObservableObject {
                         updateMessageStatus(userMsgId, status: .sent)
 
                         // Haptic feedback on first token - immediate confirmation message was accepted
-                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
-                        sentFeedback.impactOccurred()
+                        HapticFeedback.light()
                     }
 
                     updateStreamingMessageContent()

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import OSLog
 
 /// Shared utilities for working with AI models and providers
 enum ModelUtilities {
@@ -82,7 +83,7 @@ enum ModelUtilities {
                 }
             }
         } catch {
-            print("Failed to check provider configuration: \(error)")
+            Logger.config.error("Failed to check provider configuration: \(String(describing: error), privacy: .public)")
         }
         return false
     }

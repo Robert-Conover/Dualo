@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import LLM
+import OSLog
 
 // MARK: - Local Model Error
 
@@ -76,7 +77,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
             do {
                 try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
             } catch {
-                print("Failed to create models directory: \(error)")
+                Logger.localModels.fault("Failed to create models directory: \(String(describing: error), privacy: .public)")
             }
         }
     }
@@ -105,11 +106,11 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
                 if fileManager.fileExists(atPath: currentPath.path) {
                     // File exists - update the path to the current location if it changed
                     if currentPath.path != path {
-                        print("📍 Updated model path for \(model.displayName): \(currentPath.path)")
+                        Logger.localModels.info("Updated model path for \(model.displayName, privacy: .public): \(currentPath.path, privacy: .public)")
                         models[index].downloadState = .downloaded(localPath: currentPath.path)
                     }
                 } else {
-                    print("⚠️ Model file not found at: \(currentPath.path)")
+                    Logger.localModels.warning("Model file not found at: \(currentPath.path, privacy: .public)")
                     models[index].downloadState = .notDownloaded
                 }
             }
@@ -167,7 +168,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
                 models.append(importedModel)
             }
         } catch {
-            print("Error scanning models directory: \(error)")
+            Logger.localModels.error("Error scanning models directory: \(String(describing: error), privacy: .public)")
         }
     }
     
@@ -287,9 +288,9 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
         currentDownloadingModelId = model.id
         updateModelState(model.id, state: .downloading(progress: 0))
         
-        print("🚀 Starting download of \(model.displayName)")
-        print("📥 URL: \(downloadURLString)")
-        print("📂 Destination: \(destinationPath.path)")
+        Logger.localModels.info("Starting download of \(model.displayName, privacy: .public)")
+        Logger.localModels.debug("URL: \(downloadURLString, privacy: .public)")
+        Logger.localModels.debug("Destination: \(destinationPath.path, privacy: .public)")
         
         do {
             // Create download delegate for progress tracking
@@ -297,7 +298,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
                 Task { @MainActor [weak self] in
                     self?.updateModelState(model.id, state: .downloading(progress: progress))
                     if Int(progress * 100) % 10 == 0 {
-                        print("📥 Progress: \(Int(progress * 100))%")
+                        Logger.localModels.debug("Progress: \(Int(progress * 100))%")
                     }
                 }
             }
@@ -327,8 +328,8 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
             }
             try fileManager.moveItem(at: tempURL, to: destinationPath)
             
-            print("✅ Model \(model.displayName) downloaded successfully!")
-            print("📂 Saved to: \(destinationPath.path)")
+            Logger.localModels.info("Model \(model.displayName, privacy: .public) downloaded successfully")
+            Logger.localModels.debug("Saved to: \(destinationPath.path, privacy: .public)")
             
             // Update state
             updateModelState(model.id, state: .downloaded(localPath: destinationPath.path))
@@ -344,10 +345,10 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
             let isCancellation = (error as? URLError)?.code == .cancelled
             
             if isCancellation {
-                print("⚠️ Download cancelled for \(model.displayName)")
+                Logger.localModels.info("Download cancelled for \(model.displayName, privacy: .public)")
                 // State already set to .notDownloaded by cancelDownload(), don't overwrite
             } else {
-                print("❌ Download failed: \(error)")
+                Logger.localModels.error("Download failed: \(String(describing: error), privacy: .public)")
                 updateModelState(model.id, state: .failed(error: error.localizedDescription))
             }
             
@@ -376,7 +377,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
             currentDownloadingModelId = nil
         }
         
-        print("⚠️ Download cancelled for \(modelId)")
+        Logger.localModels.info("Download cancelled for \(modelId, privacy: .public)")
     }
     
     /// Import a GGUF model from a local file URL
@@ -426,7 +427,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
         
         persistStates()
         
-        print("✅ Imported model: \(fileName)")
+        Logger.localModels.info("Imported model: \(fileName, privacy: .public)")
         
         return importedModel
     }
@@ -443,9 +444,9 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
         if fileManager.fileExists(atPath: modelURL.path) {
             do {
                 try fileManager.removeItem(at: modelURL)
-                print("🗑️ Deleted model file: \(modelURL.path)")
+                Logger.localModels.info("Deleted model file: \(modelURL.path, privacy: .public)")
             } catch {
-                print("❌ Failed to delete model file: \(error)")
+                Logger.localModels.error("Failed to delete model file: \(String(describing: error), privacy: .public)")
                 throw LocalModelError.deletionFailed(error.localizedDescription)
             }
         }
@@ -464,7 +465,7 @@ class LocalModelManager: ObservableObject, LocalModelManaging {
             selectedModelId = downloadedModels.first?.id
         }
         
-        print("✅ Model \(model.displayName) deleted successfully.")
+        Logger.localModels.info("Model \(model.displayName, privacy: .public) deleted successfully")
     }
     
     // MARK: - Private Helpers

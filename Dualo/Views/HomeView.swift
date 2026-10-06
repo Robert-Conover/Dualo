@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import OSLog
 
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
@@ -22,7 +23,6 @@ struct HomeView: View {
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var capturedImage: ImageAttachment?
-    @State private var animateGradient = false
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
     
@@ -64,20 +64,23 @@ struct HomeView: View {
             // position ourselves via `keyboardResponsive()`.
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .background {
-                // Animated gradient background (background ignores safe areas, content does not)
-                LinearGradient(
-                    colors: animateGradient ?
-                        [Color.theme.gradientStart.opacity(0.7), Color.theme.gradientEnd.opacity(0.5), Color.theme.gradientDark] :
-                        [Color.theme.gradientEnd.opacity(0.6), Color.theme.gradientStart.opacity(0.4), Color.theme.gradientDark],
-                    startPoint: animateGradient ? .topLeading : .topTrailing,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
-                    animateGradient = true
+                // Animated gradient background (background ignores safe areas, content does not).
+                // Driven by the clock rather than a repeatForever state animation, which would also
+                // capture initial layout changes (frame sizes) and loop them forever.
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let p = (1 - cos(t * .pi / 6)) / 2 // eases 0 → 1 over 6s, then back
+                    LinearGradient(
+                        colors: [
+                            Color.theme.gradientEnd.opacity(0.6).mix(with: Color.theme.gradientStart.opacity(0.7), by: p),
+                            Color.theme.gradientStart.opacity(0.4).mix(with: Color.theme.gradientEnd.opacity(0.5), by: p),
+                            Color.theme.gradientDark
+                        ],
+                        startPoint: UnitPoint(x: 1 - p, y: 0),
+                        endPoint: .bottomTrailing
+                    )
                 }
+                .ignoresSafeArea()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -99,8 +102,7 @@ struct HomeView: View {
                     .onEnded { gesture in
                         if gesture.translation.width > 100 {
                             // Swipe right to open conversations
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
+                            HapticFeedback.light()
                             showConversations = true
                         }
                     }
@@ -159,8 +161,7 @@ struct HomeView: View {
     
     private var settingsButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
+            HapticFeedback.light()
             showSettings = true
         }) {
             Image(systemName: "gearshape")
@@ -175,8 +176,7 @@ struct HomeView: View {
     
     private var conversationsButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
+            HapticFeedback.light()
             showConversations = true
         }) {
             Image(systemName: "bubble.left")
@@ -269,8 +269,7 @@ struct HomeView: View {
     @ViewBuilder
     private var newChatButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
+            HapticFeedback.medium()
             
             let newConversation = conversationManager.createNewConversation()
             selectedConversation = newConversation
@@ -352,8 +351,7 @@ struct HomeView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 ForEach(promptSuggestions, id: \.1) { emoji, text in
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         messageText = text
                         isInputFocused = true
                     }) {
@@ -399,8 +397,7 @@ struct HomeView: View {
                 HStack(spacing: 8) {
                     // + button for attachments
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         showAttachmentOptions = true
                     }) {
                         Image(systemName: "plus")
@@ -413,6 +410,7 @@ struct HomeView: View {
                         .font(.body)
                         .lineLimit(1...6)
                         .textFieldStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .tint(.accentColor)
                         .focused($isInputFocused)
                         .onSubmit {
@@ -423,8 +421,7 @@ struct HomeView: View {
                     
                     // Send button with bounce animation
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.medium()
                         sendMessage()
                     }) {
                         Image(systemName: "arrow.up.circle.fill")
@@ -485,7 +482,7 @@ struct HomeView: View {
     private func updateModelWithProvider(_ newModel: String, provider: APIProvider) {
         // Safety guard: prevent model switching during generation
         guard !isModelSwitchingDisabled else {
-            print("HomeView: Model switch blocked - loading/generating in progress")
+            Logger.ui.debug("HomeView: Model switch blocked - loading/generating in progress")
             return
         }
         
@@ -512,14 +509,14 @@ struct HomeView: View {
                 }
             }
         } catch {
-            print("Failed to update model selection: \(error)")
+            Logger.config.error("Failed to update model selection: \(String(describing: error), privacy: .public)")
         }
     }
     
     private func selectLocalModel(_ model: LocalModel) {
         // Safety guard: prevent model switching during generation
         guard !isModelSwitchingDisabled else {
-            print("HomeView: Local model switch blocked - loading/generating in progress")
+            Logger.ui.debug("HomeView: Local model switch blocked - loading/generating in progress")
             return
         }
         
@@ -540,7 +537,7 @@ struct HomeView: View {
             configs.setConfiguration(localConfig)
             try KeychainService.shared.saveProviderConfigurations(configs)
         } catch {
-            print("Failed to save local model selection: \(error)")
+            Logger.config.error("Failed to save local model selection: \(String(describing: error), privacy: .public)")
         }
         
         // Load the model in GGUFService
@@ -548,7 +545,7 @@ struct HomeView: View {
             do {
                 try await GGUFService.shared.loadModel(modelId: model.id)
             } catch {
-                print("Failed to load local model: \(error)")
+                Logger.inference.error("Failed to load local model: \(String(describing: error), privacy: .public)")
                 modelLoadErrorMessage = error.localizedDescription
                 showModelLoadError = true
             }

@@ -77,6 +77,7 @@ enum AppConstants {
     enum Security {
         // API Key validation patterns
         static let openaiKeyPrefix = "sk-"
+        static let openaiKeyMinLength = 21
         
         // Keychain configuration
         static let legacyKeychainService = "com.localllm.apikeys"

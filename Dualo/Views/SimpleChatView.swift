@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import OSLog
 
 struct SimpleChatView: View {
     let conversationId: UUID
@@ -85,10 +86,10 @@ struct SimpleChatView: View {
     
     private func handleOnAppear() {
         guard let conversation = conversation else {
-            print("SimpleChatView onAppear: conversation not found for id \(conversationId)")
+            Logger.ui.warning("SimpleChatView onAppear: conversation not found for id \(conversationId, privacy: .public)")
             return
         }
-        print("SimpleChatView onAppear: conversation.id = \(conversation.id), messages count = \(conversation.messages.count)")
+        Logger.ui.debug("SimpleChatView onAppear: conversation.id = \(conversation.id, privacy: .public), messages count = \(conversation.messages.count)")
         // Initialize the current state variables
         currentTitle = conversation.title
         currentModel = conversation.model
@@ -105,7 +106,7 @@ struct SimpleChatView: View {
         
         // Check for pending initial message + attachments from HomeView
         if let pendingData = conversationManager.pendingChatData {
-            print("Found pending message: \(pendingData.message), attachments: \(pendingData.attachments.count)")
+            Logger.ui.debug("Found pending message: \(pendingData.message), attachments: \(pendingData.attachments.count)")
             conversationManager.pendingChatData = nil
             
             // Transfer attachments to viewModel before sending
@@ -120,7 +121,7 @@ struct SimpleChatView: View {
     private func sendPendingMessage(_ message: String) async {
         // For local models, wait for the model to load before sending
         if conversation?.provider == .local {
-            print("SimpleChatView: Waiting for local model to load...")
+            Logger.ui.debug("SimpleChatView: Waiting for local model to load...")
             // Wait for model to be loaded (with timeout)
             var waitAttempts = 0
             let maxWaitAttempts = 100 // 10 seconds max (100 * 100ms)
@@ -130,12 +131,13 @@ struct SimpleChatView: View {
             }
             
             if !ggufService.isModelLoaded {
-                print("SimpleChatView: Local model failed to load, cannot send pending message")
+                Logger.ui.error("SimpleChatView: Local model failed to load, cannot send pending message")
                 viewModel.errorMessage = "Local model failed to load. Please try again."
                 viewModel.showError = true
+                HapticFeedback.error()
                 return
             }
-            print("SimpleChatView: Local model loaded, sending pending message")
+            Logger.ui.debug("SimpleChatView: Local model loaded, sending pending message")
         }
         
         await viewModel.sendMessage(message, useStreaming: true)
@@ -164,9 +166,7 @@ struct SimpleChatView: View {
     private func handleStreamingChange(_ oldValue: Bool, _ newValue: Bool) {
         // Streaming state changed - no need to manually persist since ChatViewModel handles it
         if oldValue && !newValue {
-            #if DEBUG
-            print("SimpleChatView: Streaming completed")
-            #endif
+            Logger.ui.debug("SimpleChatView: Streaming completed")
             
             // Show generation stats for local models
             if currentProvider == .local && ggufService.lastGenerationStats != nil {
@@ -241,8 +241,7 @@ struct SimpleChatView: View {
             VStack(spacing: 10) {
                 ForEach(quickPrompts, id: \.1) { emoji, text in
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         messageText = text
                         isInputFocused = true
                     }) {
@@ -291,8 +290,7 @@ struct SimpleChatView: View {
     }
 
     private func scrollToBottom() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
         performScrollToBottom?()
     }
     
@@ -523,12 +521,10 @@ struct SimpleChatView: View {
     }
     
     private func renameChat(to newTitle: String) {
-        #if DEBUG
-        print("SimpleChatView: Renaming chat from '\(conversation?.title ?? "")' to '\(newTitle)'")
-        #endif
+        Logger.ui.debug("SimpleChatView: Renaming chat from '\(conversation?.title ?? "")' to '\(newTitle)'")
         
         guard var updatedConversation = conversation else {
-            print("SimpleChatView: Could not find conversation to rename")
+            Logger.ui.warning("SimpleChatView: Could not find conversation to rename")
             return
         }
         updatedConversation.title = newTitle
@@ -540,7 +536,7 @@ struct SimpleChatView: View {
     private func changeConversationModel(to newModel: String, provider: APIProvider) {
         // Safety guard: prevent model switching during streaming/generation
         guard !isModelSwitchingDisabled else {
-            print("SimpleChatView: Model switch blocked - streaming/loading in progress")
+            Logger.ui.debug("SimpleChatView: Model switch blocked - streaming/loading in progress")
             return
         }
         
@@ -550,7 +546,7 @@ struct SimpleChatView: View {
         }
         
         guard var updatedConversation = conversation else {
-            print("SimpleChatView: Could not find conversation to update model")
+            Logger.ui.warning("SimpleChatView: Could not find conversation to update model")
             return
         }
         updatedConversation.model = newModel
@@ -579,19 +575,19 @@ struct SimpleChatView: View {
                 }
             }
         } catch {
-            print("Failed to load provider configuration for \(provider): \(error)")
+            Logger.config.error("Failed to load provider configuration for \(provider.displayName, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
     
     private func changeToLocalModel(_ model: LocalModel) {
         // Safety guard: prevent model switching during streaming/generation
         guard !isModelSwitchingDisabled else {
-            print("SimpleChatView: Local model switch blocked - streaming/loading in progress")
+            Logger.ui.debug("SimpleChatView: Local model switch blocked - streaming/loading in progress")
             return
         }
         
         guard var updatedConversation = conversation else {
-            print("SimpleChatView: Could not find conversation to update to local model")
+            Logger.ui.warning("SimpleChatView: Could not find conversation to update to local model")
             return
         }
         updatedConversation.model = model.id
@@ -623,7 +619,7 @@ struct SimpleChatView: View {
             do {
                 try await GGUFService.shared.loadModel(modelId: model.id)
             } catch {
-                print("Failed to load local model: \(error)")
+                Logger.inference.error("Failed to load local model: \(String(describing: error), privacy: .public)")
                 modelLoadErrorMessage = error.localizedDescription
                 showModelLoadError = true
             }
@@ -728,8 +724,6 @@ private struct AlertsModifier: ViewModifier {
             .alert("Error", isPresented: $showError) {
                 Button("OK") {
                     showError = false
-                    let notificationFeedback = UINotificationFeedbackGenerator()
-                    notificationFeedback.notificationOccurred(.error)
                 }
             } message: {
                 Text(errorMessage)

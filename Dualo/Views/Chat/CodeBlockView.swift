@@ -84,8 +84,7 @@ struct CodeBlockView: View {
     private func copyCode() {
         UIPasteboard.general.string = code
         
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             showCopyToast = true

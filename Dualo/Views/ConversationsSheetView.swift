@@ -97,8 +97,7 @@ struct ConversationsSheetView: View {
         }
         .overlay(alignment: .trailing) {
             Button(action: {
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
+                HapticFeedback.light()
                 isPresented = false
             }) {
                 Image(systemName: "xmark")
@@ -161,8 +160,7 @@ struct ConversationsSheetView: View {
             Section {
                 ForEach(filteredConversations) { conversation in
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         selectedConversation = conversation
                         isPresented = false
                     }) {

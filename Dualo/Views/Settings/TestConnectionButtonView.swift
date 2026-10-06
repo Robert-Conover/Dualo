@@ -23,55 +23,60 @@ struct TestConnectionButtonView: View {
     let onTest: () -> Void
     let onDismissResult: () -> Void
 
+    // Rendered as a plain List row; the containing Section supplies the card styling.
+    // Both buttons use .borderless so a tap only triggers the one under the finger.
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onTest) {
                 HStack(spacing: 12) {
-                    if isTestingConnection {
-                        ProgressView()
-                            .scaleEffect(0.9)
-                    } else if let result = connectionTestResult {
-                        switch result {
-                        case .success:
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        case .failure:
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.red)
-                        }
-                    } else {
-                        Image(systemName: "wifi.circle")
-                            .foregroundStyle(.blue)
-                    }
+                    statusIcon
+                        .frame(width: 28, height: 28)
 
                     Text(buttonText)
-                        .fontWeight(.medium)
+                        .foregroundStyle(textColor)
+
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(.secondarySystemGroupedBackground))
-                )
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.borderless)
             .disabled(isAPIKeyEmpty || isTestingConnection)
-            .opacity(isAPIKeyEmpty ? 0.5 : 1)
 
             // Dismiss button (only visible when there's a result)
             if connectionTestResult != nil && !isTestingConnection {
                 Button(action: onDismissResult) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(.secondarySystemGroupedBackground))
-                        )
+                        .font(.system(size: 18))
+                        .foregroundStyle(.tertiary)
                 }
+                .buttonStyle(.borderless)
                 .transition(.scale.combined(with: .opacity))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if isTestingConnection {
+            ProgressView()
+        } else if let result = connectionTestResult {
+            switch result {
+            case .success:
+                SettingsIcon(systemName: "checkmark", color: .green)
+            case .failure:
+                SettingsIcon(systemName: "xmark", color: .red)
+            }
+        } else {
+            SettingsIcon(systemName: "wifi", color: isAPIKeyEmpty ? .gray : .blue)
+        }
+    }
+
+    private var textColor: Color {
+        if isAPIKeyEmpty { return .secondary }
+        switch connectionTestResult {
+        case .success: return .green
+        case .failure: return .red
+        case nil: return .blue
         }
     }
 
