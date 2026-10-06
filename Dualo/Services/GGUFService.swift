@@ -90,9 +90,10 @@ class GGUFService: ObservableObject, GGUFServicing {
     private var loadedModelTemplate: Template?
     private var loadedModelContextSize: Int32 = Int32(AppConstants.LocalModels.maxMobileContextTokens)
 
-    /// Cached regex for stripping thinking blocks (compiled once for performance)
+    /// Cached regex for stripping thinking blocks (compiled once for performance).
+    /// Like `MessageContentRenderer`, an unclosed <think> (reply stopped mid-thought) runs to the end.
     nonisolated private static let thinkingBlockRegex: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: "<think>[\\s\\S]*?</think>", options: [])
+        try? NSRegularExpression(pattern: "<think>[\\s\\S]*?(?:</think>|$)", options: [])
     }()
     
     /// Track which conversation the LLM is currently serving
@@ -441,7 +442,7 @@ class GGUFService: ObservableObject, GGUFServicing {
     
     /// Remove <think>...</think> blocks from content
     /// These are the model's internal reasoning and shouldn't be included in history
-    nonisolated private static func stripThinkingBlocks(from content: String) -> String {
+    nonisolated static func stripThinkingBlocks(from content: String) -> String {
         // Use cached regex for performance (avoid recompiling on every call)
         guard let regex = Self.thinkingBlockRegex else {
             return content
