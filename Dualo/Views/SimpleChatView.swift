@@ -32,7 +32,6 @@ struct SimpleChatView: View {
     @State private var currentTitle = ""
     @State private var currentModel = ""
     @State private var currentProvider: APIProvider = .openai
-    @State private var isInitialLoad = true
 
     // Image picker state
     @State private var showAttachmentOptions = false
@@ -47,18 +46,11 @@ struct SimpleChatView: View {
     // Scroll to bottom action
     @State private var performScrollToBottom: (() -> Void)?
 
-    // Quick prompts for empty state
-    private let quickPrompts = [
-        ("💡", "Explain a concept to me"),
-        ("✍️", "Help me write something"),
-        ("🐛", "Debug this code")
-    ]
-    
     var body: some View {
         mainContentView
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
-            .modifier(AlertsModifier(
+            .modifier(ChatAlertsModifier(
                 showError: $viewModel.showError,
                 errorMessage: viewModel.errorMessage,
                 showRenameAlert: $showRenameAlert,
@@ -69,7 +61,7 @@ struct SimpleChatView: View {
                 modelLoadErrorMessage: modelLoadErrorMessage,
                 renameChat: renameChat
             ))
-            .modifier(AttachmentModifier(
+            .modifier(AttachmentPickerModifier(
                 showAttachmentOptions: $showAttachmentOptions,
                 showPhotoPicker: $showPhotoPicker,
                 showCamera: $showCamera,
@@ -156,10 +148,6 @@ struct SimpleChatView: View {
             if updatedConversation.provider != currentProvider {
                 currentProvider = updatedConversation.provider
             }
-            
-            if isInitialLoad && !updatedConversation.messages.isEmpty {
-                isInitialLoad = false
-            }
         }
     }
     
@@ -182,99 +170,6 @@ struct SimpleChatView: View {
                 }
             }
         }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            // Animated conversation icon
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.1), .purple.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.7), .purple.opacity(0.6)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .symbolEffect(.pulse.wholeSymbol, options: .speed(0.5).repeat(.continuous))
-            }
-            
-            VStack(spacing: 8) {
-                Text("Start a Conversation")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.primary)
-                
-                Text("Ask me anything — I'm here to help!")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                
-                // Loading indicator for local model
-                if ggufService.isLoading {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .secondary))
-                            .scaleEffect(0.8)
-                        
-                        Text("Loading model...")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 4)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
-            }
-            
-            // Quick prompt buttons
-            VStack(spacing: 10) {
-                ForEach(quickPrompts, id: \.1) { emoji, text in
-                    Button(action: {
-                        HapticFeedback.light()
-                        messageText = text
-                        isInputFocused = true
-                    }) {
-                        HStack(spacing: 10) {
-                            Text(emoji)
-                                .font(.system(size: 18))
-                            Text(text)
-                                .font(.subheadline.weight(.medium))
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color(.secondarySystemGroupedBackground))
-                                .shadow(color: .black.opacity(0.03), radius: 4, x: 0, y: 2)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 8)
-            
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.theme.chatBackground)
     }
     
     // MARK: - Message List
@@ -317,15 +212,21 @@ struct SimpleChatView: View {
     private var mainContentView: some View {
         VStack(spacing: 0) {
             if viewModel.messages.isEmpty {
-                emptyStateView
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isInputFocused = false
-                    }
+                ChatEmptyStateView(isLoadingModel: ggufService.isLoading) { prompt in
+                    messageText = prompt
+                    isInputFocused = true
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isInputFocused = false
+                }
             } else {
                 ZStack(alignment: .bottomTrailing) {
                     messagesList
-                    scrollToBottomButton
+                    ScrollToBottomButton(
+                        isVisible: showScrollToBottom && !viewModel.isStreaming,
+                        action: scrollToBottom
+                    )
                 }
             }
             
@@ -333,173 +234,35 @@ struct SimpleChatView: View {
         }
     }
     
-    @ViewBuilder
-    private var scrollToBottomButton: some View {
-        if showScrollToBottom && !viewModel.messages.isEmpty && !viewModel.isStreaming {
-            Button(action: scrollToBottom) {
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        LinearGradient(
-                            colors: [.blue, .blue.opacity(0.8)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        in: Circle()
-                    )
-                    .shadow(color: .blue.opacity(0.3), radius: 10, x: 0, y: 4)
-                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-            }
-            .padding(.trailing, 16)
-            .padding(.bottom, 8)
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.7, anchor: .bottomTrailing)
-                    .combined(with: .opacity)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.7)),
-                removal: .scale(scale: 0.5, anchor: .bottomTrailing)
-                    .combined(with: .opacity)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.9))
-            ))
-            .scaleEffect(showScrollToBottom ? 1.0 : 0.9)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: showScrollToBottom)
-        }
-    }
-    
+    // MARK: - Toolbar
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            modelSelectorToolbarItem
+            ModelSelectorMenu(
+                currentModel: currentModel,
+                currentProvider: currentProvider,
+                isDisabled: isModelSwitchingDisabled,
+                onSelectCloudModel: changeConversationModel,
+                onSelectLocalModel: changeToLocalModel
+            )
         }
-        
+
         ToolbarItem(placement: .navigationBarTrailing) {
-            optionsMenuToolbarItem
+            ChatOptionsMenu(
+                isDisabled: viewModel.messages.isEmpty,
+                onRename: {
+                    newTitle = currentTitle.isEmpty ? (conversation?.title ?? "") : currentTitle
+                    showRenameAlert = true
+                },
+                onExport: export
+            )
         }
     }
-    
-    // MARK: - Extracted Toolbar Views (fixes compiler type-check complexity)
-    
+
     /// Whether model switching should be disabled (during streaming/loading to prevent crashes)
     private var isModelSwitchingDisabled: Bool {
         viewModel.isStreaming || viewModel.isLoading || ggufService.isLoading || ggufService.isGenerating
-    }
-    
-    @ViewBuilder
-    private var modelSelectorToolbarItem: some View {
-        Menu {
-            cloudProvidersMenuSection
-            localModelsMenuSection
-        } label: {
-            modelSelectorLabel
-        }
-        .disabled(isModelSwitchingDisabled)
-        .opacity(isModelSwitchingDisabled ? 0.5 : 1.0)
-    }
-    
-    @ViewBuilder
-    private var cloudProvidersMenuSection: some View {
-        ForEach([APIProvider.openai], id: \.self) { provider in
-            Section(provider.displayName) {
-                ForEach(provider.availableModels, id: \.self) { model in
-                    Button(action: {
-                        changeConversationModel(to: model, provider: provider)
-                    }) {
-                        HStack {
-                            Text(modelDisplayName(for: model))
-                            if model == currentModel && provider == currentProvider {
-                                Spacer()
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    .disabled(!isProviderConfigured(provider))
-                }
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var localModelsMenuSection: some View {
-        Section(StringConstants.UI.localModelsTitle) {
-            if localModelManager.downloadedModels.isEmpty {
-                Text(StringConstants.UI.noModelsDownloaded)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(localModelManager.downloadedModels) { model in
-                    Button(action: {
-                        changeToLocalModel(model)
-                    }) {
-                        HStack {
-                            Text(model.displayName)
-                            if currentProvider == .local && currentModel == model.id {
-                                Spacer()
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    .disabled(!DeviceCapability.supportsLocalLLM)
-                }
-            }
-        }
-    }
-    
-    private var modelSelectorLabel: some View {
-        HStack(spacing: 6) {
-            Image(systemName: providerIcon(for: currentProvider))
-                .font(.system(size: 12, weight: .medium))
-            
-            Text(modelDisplayName(for: currentModel))
-                .font(.system(size: 14, weight: .medium))
-                .lineLimit(1)
-            
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-        }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(in: .capsule)
-    }
-    
-    @ViewBuilder
-    private var optionsMenuToolbarItem: some View {
-        Menu {
-            Button(action: {
-                newTitle = currentTitle.isEmpty ? (conversation?.title ?? "") : currentTitle
-                showRenameAlert = true
-            }) {
-                Label("Rename Chat", systemImage: "pencil")
-            }
-            
-            Divider()
-            
-            Button(action: {
-                exportAsPDF()
-            }) {
-                Label("Export as PDF", systemImage: "doc.richtext")
-            }
-            
-            Button(action: {
-                exportAsMarkdown()
-            }) {
-                Label("Export as Markdown", systemImage: "doc.text")
-            }
-            
-            Button(action: {
-                exportAsText()
-            }) {
-                Label("Export as Text", systemImage: "doc.plaintext")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Options")
-        }
-        .disabled(viewModel.messages.isEmpty)
     }
 
     private func sendMessage() {
@@ -626,170 +389,16 @@ struct SimpleChatView: View {
         }
     }
     
-    private func isProviderConfigured(_ provider: APIProvider) -> Bool {
-        ModelUtilities.isConfigured(provider, downloadedModels: localModelManager.downloadedModels)
-    }
-    
-    private func providerIcon(for provider: APIProvider) -> String {
-        ModelUtilities.icon(for: provider)
-    }
-    
-    private func modelDisplayName(for model: String) -> String {
-        ModelUtilities.displayName(for: model, localModels: localModelManager.availableModels)
-    }
-    
-    private func exportAsPDF() {
+    private func export(_ format: ChatExportService.Format) {
+        guard let conversation = conversation else { return }
         Task { @MainActor in
             do {
-                guard let exportConversation = conversation else { return }
-                let exportService = ChatExportService()
-                let pdfData = try await exportService.makePDF(for: exportConversation)
-                shareExport(data: pdfData, filename: "\(exportConversation.title).pdf")
+                try await ChatExportService().share(conversation, as: format)
             } catch {
-                exportErrorMessage = "Failed to export PDF: \(error.localizedDescription)"
+                exportErrorMessage = "Failed to export \(format.displayName): \(error.localizedDescription)"
                 showExportError = true
             }
         }
-    }
-    
-    private func exportAsMarkdown() {
-        Task { @MainActor in
-            guard let exportConversation = conversation else { return }
-            let exportService = ChatExportService()
-            let markdownData = exportService.makeMarkdown(for: exportConversation)
-            shareExport(data: markdownData, filename: "\(exportConversation.title).md")
-        }
-    }
-    
-    private func exportAsText() {
-        Task { @MainActor in
-            guard let exportConversation = conversation else { return }
-            let exportService = ChatExportService()
-            let textData = exportService.makeText(for: exportConversation)
-            shareExport(data: textData, filename: "\(exportConversation.title).txt")
-        }
-    }
-    
-    @MainActor
-    private func shareExport(data: Data, filename: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        
-        do {
-            try data.write(to: tempURL)
-            
-            let shareSheet = UIActivityViewController(
-                activityItems: [tempURL],
-                applicationActivities: nil
-            )
-            
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first,
-               let rootViewController = window.rootViewController {
-                
-                var presentingVC = rootViewController
-                while let presented = presentingVC.presentedViewController {
-                    presentingVC = presented
-                }
-                
-                if let popover = shareSheet.popoverPresentationController {
-                    popover.sourceView = window
-                    popover.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                presentingVC.present(shareSheet, animated: true)
-            }
-        } catch {
-            exportErrorMessage = "Failed to save file: \(error.localizedDescription)"
-            showExportError = true
-        }
-    }
-}
-
-// MARK: - Alerts View Modifier (extracted to reduce body complexity)
-
-private struct AlertsModifier: ViewModifier {
-    @Binding var showError: Bool
-    let errorMessage: String
-    @Binding var showRenameAlert: Bool
-    @Binding var newTitle: String
-    @Binding var showExportError: Bool
-    let exportErrorMessage: String
-    @Binding var showModelLoadError: Bool
-    let modelLoadErrorMessage: String
-    let renameChat: (String) -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .alert("Error", isPresented: $showError) {
-                Button("OK") {
-                    showError = false
-                }
-            } message: {
-                Text(errorMessage)
-            }
-            .alert("Rename Chat", isPresented: $showRenameAlert) {
-                TextField("Chat Title", text: $newTitle)
-                    .textInputAutocapitalization(.words)
-                Button("Cancel", role: .cancel) { }
-                Button("Rename") {
-                    let trimmedTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmedTitle.isEmpty {
-                        renameChat(trimmedTitle)
-                    }
-                }
-            } message: {
-                Text("Enter a new title for this chat")
-            }
-            .alert("Export Error", isPresented: $showExportError) {
-                Button("OK") { }
-            } message: {
-                Text(exportErrorMessage)
-            }
-            .alert("Model Load Error", isPresented: $showModelLoadError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(modelLoadErrorMessage)
-            }
-    }
-}
-
-// MARK: - Attachment View Modifier (extracted to reduce body complexity)
-
-private struct AttachmentModifier: ViewModifier {
-    @Binding var showAttachmentOptions: Bool
-    @Binding var showPhotoPicker: Bool
-    @Binding var showCamera: Bool
-    @Binding var pendingAttachments: [ImageAttachment]
-    @Binding var capturedImage: ImageAttachment?
-    
-    func body(content: Content) -> some View {
-        content
-            .confirmationDialog("Add Attachment", isPresented: $showAttachmentOptions, titleVisibility: .visible) {
-                Button("Photo Library") {
-                    showPhotoPicker = true
-                }
-                Button("Take Photo") {
-                    showCamera = true
-                }
-                Button("Cancel", role: .cancel) {}
-            }
-            .sheet(isPresented: $showPhotoPicker) {
-                PhotoPicker(selectedImages: $pendingAttachments, selectionLimit: 4) {
-                    showPhotoPicker = false
-                }
-            }
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraPicker(capturedImage: $capturedImage) {
-                    showCamera = false
-                }
-            }
-            .onChange(of: capturedImage) { oldValue, newValue in
-                if let newImage = newValue {
-                    pendingAttachments.append(newImage)
-                    capturedImage = nil
-                }
-            }
     }
 }
 
