@@ -145,6 +145,7 @@ struct ChatInputBar: View {
                     .font(.body)
                     .lineLimit(1...6)
                     .textFieldStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .focused($isInputFocused)
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .onSubmit {

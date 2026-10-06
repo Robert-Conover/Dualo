@@ -23,7 +23,6 @@ struct HomeView: View {
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var capturedImage: ImageAttachment?
-    @State private var animateGradient = false
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
     
@@ -65,20 +64,23 @@ struct HomeView: View {
             // position ourselves via `keyboardResponsive()`.
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .background {
-                // Animated gradient background (background ignores safe areas, content does not)
-                LinearGradient(
-                    colors: animateGradient ?
-                        [Color.theme.gradientStart.opacity(0.7), Color.theme.gradientEnd.opacity(0.5), Color.theme.gradientDark] :
-                        [Color.theme.gradientEnd.opacity(0.6), Color.theme.gradientStart.opacity(0.4), Color.theme.gradientDark],
-                    startPoint: animateGradient ? .topLeading : .topTrailing,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
-                    animateGradient = true
+                // Animated gradient background (background ignores safe areas, content does not).
+                // Driven by the clock rather than a repeatForever state animation, which would also
+                // capture initial layout changes (frame sizes) and loop them forever.
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    let t = context.date.timeIntervalSinceReferenceDate
+                    let p = (1 - cos(t * .pi / 6)) / 2 // eases 0 → 1 over 6s, then back
+                    LinearGradient(
+                        colors: [
+                            Color.theme.gradientEnd.opacity(0.6).mix(with: Color.theme.gradientStart.opacity(0.7), by: p),
+                            Color.theme.gradientStart.opacity(0.4).mix(with: Color.theme.gradientEnd.opacity(0.5), by: p),
+                            Color.theme.gradientDark
+                        ],
+                        startPoint: UnitPoint(x: 1 - p, y: 0),
+                        endPoint: .bottomTrailing
+                    )
                 }
+                .ignoresSafeArea()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -414,6 +416,7 @@ struct HomeView: View {
                         .font(.body)
                         .lineLimit(1...6)
                         .textFieldStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .tint(.accentColor)
                         .focused($isInputFocused)
                         .onSubmit {
