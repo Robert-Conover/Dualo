@@ -234,7 +234,7 @@ struct SettingsView: View {
         
         // Flag a wrong prefix right away, but hold the length check until typing
         // pauses so a key being typed isn't called "too short" on every keystroke.
-        apiKeyValidationError = validateAPIKeyFormat(newKey, checkLength: false)
+        apiKeyValidationError = APIKeyValidator.validationError(for: newKey, checkLength: false)
 
         debounceTask = Task { @MainActor in
             do {
@@ -242,7 +242,7 @@ struct SettingsView: View {
 
                 if !Task.isCancelled {
                     withAnimation {
-                        apiKeyValidationError = validateAPIKeyFormat(openAIAPIKey)
+                        apiKeyValidationError = APIKeyValidator.validationError(for: openAIAPIKey)
                     }
                     saveAPIKey()
                 }
@@ -265,10 +265,9 @@ struct SettingsView: View {
     }
     
     private func saveAPIKey() {
-        // Pasted keys often carry a trailing newline or space; never store those.
         let apiKey = trimmedAPIKey
-        
-        guard apiKey.isEmpty || validateAPIKeyFormat(apiKey) == nil else { return }
+
+        guard APIKeyValidator.validationError(for: apiKey) == nil else { return }
         
         do {
             var configs = try KeychainService.shared.loadProviderConfigurations() ?? ProviderConfigurations()
@@ -295,28 +294,9 @@ struct SettingsView: View {
     }
     
     private var trimmedAPIKey: String {
-        openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        APIKeyValidator.normalized(openAIAPIKey)
     }
-    
-    /// Single source of truth for key format: the inline error and the save guard both use it.
-    private func validateAPIKeyFormat(_ apiKey: String, checkLength: Bool = true) -> String? {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if trimmedKey.isEmpty {
-            return nil
-        }
 
-        if !trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) {
-            return "OpenAI API keys must start with '\(AppConstants.Security.openaiKeyPrefix)'"
-        }
-        
-        if checkLength && trimmedKey.count < AppConstants.Security.openaiKeyMinLength {
-            return "This key looks too short. Check that it was copied in full."
-        }
-        
-        return nil
-    }
-    
     private func testConnection() {
         isTestingConnection = true
         connectionTestResult = nil
