@@ -15,7 +15,7 @@ xcodebuild build -project Dualo.xcodeproj -scheme Dualo -destination 'platform=i
 ```bash
 xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
-Tests use Swift Testing (`import Testing`, `@Test`); `DualoTests` is currently a placeholder. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
+Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, HTTP error mapping, `<think>` handling); add `-only-testing:DualoTests` to skip the slow `DualoUITests`. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
 
 LLM.swift is pinned to an exact version via SPM in the Xcode project.
 
@@ -58,12 +58,12 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 
 ### Context Management
 
-`GGUFService` tracks `currentConversationId` and resets the LLM's KV cache when switching conversations. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both.
+`GGUFService` tracks `currentConversationId` and resets the LLM's KV cache when switching conversations. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both. `ThinkingBlockTests` covers both sides.
 
 ### File Structure
 
 - `Models/` - Data models (Conversation, Message, APIConfiguration, LocalModel)
-- `Services/` - Business logic: the singletons above plus supporting services (`ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
+- `Services/` - Business logic: the singletons above plus supporting services (`APIKeyValidator`, `ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
 - `ViewModels/` - ChatViewModel (streaming, message state)
 - `Views/` - SwiftUI views, organized into `Chat/`, `Components/`, and `Settings/` subfolders (plus `HomeView`, `MainTabView`, `SimpleChatView`, `ConversationsSheetView` at the root)
 - `DI/` - `DependencyContainer` (main-actor) holding service protocol implementations; not yet wired into the app or tests (views/view models still use `.shared` directly)
