@@ -60,10 +60,17 @@ class ChatViewModel: ObservableObject {
 
     /// Initialize with default production dependencies
     init() {
-        self.apiService = APIService.shared
+        self.apiService = Self.defaultAPIService
         self.conversationManager = ConversationManager.shared
         self.contextTracker = ContextTracker.shared
         loadConfiguration()
+    }
+
+    private static var defaultAPIService: APIServiceProtocol {
+        #if DEBUG
+        if UITestSupport.isStubbingAPI { return StubAPIService() }
+        #endif
+        return APIService.shared
     }
 
     /// Initialize with custom dependencies (for testing)
@@ -118,6 +125,9 @@ class ChatViewModel: ObservableObject {
         if provider == .local {
             return APIConfiguration(provider: .local, apiKey: "", model: model)
         }
+        #if DEBUG
+        if UITestSupport.isStubbingAPI { return UITestSupport.stubConfiguration(provider: provider, model: model) }
+        #endif
         do {
             guard let providerConfig = try KeychainService.shared.loadProviderConfigurations()?.configuration(for: provider) else {
                 return nil
@@ -456,6 +466,11 @@ class ChatViewModel: ObservableObject {
         } catch {
             Logger.chat.error("Failed to load API configuration: \(String(describing: error), privacy: .public)")
         }
+        #if DEBUG
+        if UITestSupport.isStubbingAPI && apiConfiguration == nil {
+            apiConfiguration = UITestSupport.stubConfiguration()
+        }
+        #endif
     }
     
     // MARK: - Conversation Updates

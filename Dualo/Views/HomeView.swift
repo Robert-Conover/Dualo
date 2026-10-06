@@ -407,6 +407,7 @@ struct HomeView: View {
                     }
                     
                     TextField("Ask anything", text: $messageText, axis: .vertical)
+                        .accessibilityIdentifier("homeComposer")
                         .font(.body)
                         .lineLimit(1...6)
                         .textFieldStyle(.plain)
@@ -431,6 +432,8 @@ struct HomeView: View {
                             .rotationEffect(.degrees(canSendMessage ? 0 : -90))
                     }
                     .disabled(!canSendMessage)
+                    .accessibilityLabel("Send")
+                    .accessibilityIdentifier("homeSendButton")
                     .animation(.spring(response: 0.35, dampingFraction: 0.5, blendDuration: 0), value: canSendMessage)
                 }
                 .padding(.horizontal, 16)

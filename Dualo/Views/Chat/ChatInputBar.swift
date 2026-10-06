@@ -141,6 +141,7 @@ struct ChatInputBar: View {
                 .disabled(viewModel.isLoading || viewModel.isStreaming)
 
                 TextField("Message", text: $messageText, axis: .vertical)
+                    .accessibilityIdentifier("chatComposer")
                     .font(.body)
                     .lineLimit(1...6)
                     .textFieldStyle(.plain)
@@ -173,6 +174,8 @@ struct ChatInputBar: View {
                         .rotationEffect(.degrees(viewModel.isStreaming ? 90 : 0))
                 }
                 .disabled(!canSendMessage && !viewModel.isStreaming)
+                .accessibilityLabel(viewModel.isStreaming ? "Stop" : "Send")
+                .accessibilityIdentifier("chatSendButton")
                 .animation(.spring(response: 0.25, dampingFraction: 0.7), value: canSendMessage)
                 .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.isStreaming)
             }
