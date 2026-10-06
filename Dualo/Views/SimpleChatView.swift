@@ -16,22 +16,19 @@ struct SimpleChatView: View {
     private var conversation: Conversation? {
         conversationManager.conversations.first(where: { $0.id == conversationId })
     }
+    private var currentModel: String { conversation?.model ?? "" }
+    private var currentProvider: APIProvider { conversation?.provider ?? .openai }
     @StateObject private var viewModel = ChatViewModel()
     @EnvironmentObject var conversationManager: ConversationManager
-    @EnvironmentObject var localModelManager: LocalModelManager
     @EnvironmentObject var ggufService: GGUFService
     @EnvironmentObject var contextTracker: ContextTracker
     @State private var messageText = ""
     @State private var showScrollToBottom = false
     @FocusState private var isInputFocused: Bool
-    @Environment(\.dismiss) private var dismiss
     @State private var showRenameAlert = false
     @State private var newTitle = ""
     @State private var showExportError = false
     @State private var exportErrorMessage = ""
-    @State private var currentTitle = ""
-    @State private var currentModel = ""
-    @State private var currentProvider: APIProvider = .openai
 
     // Image picker state
     @State private var showAttachmentOptions = false
@@ -70,7 +67,6 @@ struct SimpleChatView: View {
             ))
             .background(Color.theme.chatBackground)
             .onAppear(perform: handleOnAppear)
-            .onChange(of: conversationManager.conversations, handleConversationsChange)
             .onChange(of: viewModel.isStreaming, handleStreamingChange)
     }
     
@@ -82,71 +78,19 @@ struct SimpleChatView: View {
             return
         }
         Logger.ui.debug("SimpleChatView onAppear: conversation.id = \(conversation.id, privacy: .public), messages count = \(conversation.messages.count)")
-        // Initialize the current state variables
-        currentTitle = conversation.title
-        currentModel = conversation.model
-        currentProvider = conversation.provider
         // Refresh configuration to pick up any changes from settings
         viewModel.refreshConfiguration()
         // Ensure this conversation is selected in the manager
         conversationManager.selectConversation(conversation)
         viewModel.loadConversation(conversation)
         
-        // Configure context tracker (also done in loadConversation, but ensure it's set)
-        contextTracker.configure(model: conversation.model, provider: conversation.provider)
-        contextTracker.updateFromMessages(conversation.messages)
-        
         // Check for pending initial message + attachments from HomeView
         if let pendingData = conversationManager.pendingChatData {
             Logger.ui.debug("Found pending message: \(pendingData.message), attachments: \(pendingData.attachments.count)")
             conversationManager.pendingChatData = nil
             
-            // Transfer attachments to viewModel before sending
-            viewModel.pendingAttachments = pendingData.attachments
-            
             Task {
-                await sendPendingMessage(pendingData.message)
-            }
-        }
-    }
-    
-    private func sendPendingMessage(_ message: String) async {
-        // For local models, wait for the model to load before sending
-        if conversation?.provider == .local {
-            Logger.ui.debug("SimpleChatView: Waiting for local model to load...")
-            // Wait for model to be loaded (with timeout)
-            var waitAttempts = 0
-            let maxWaitAttempts = 100 // 10 seconds max (100 * 100ms)
-            while !ggufService.isModelLoaded && ggufService.isLoading && waitAttempts < maxWaitAttempts {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                waitAttempts += 1
-            }
-            
-            if !ggufService.isModelLoaded {
-                Logger.ui.error("SimpleChatView: Local model failed to load, cannot send pending message")
-                viewModel.errorMessage = "Local model failed to load. Please try again."
-                viewModel.showError = true
-                HapticFeedback.error()
-                return
-            }
-            Logger.ui.debug("SimpleChatView: Local model loaded, sending pending message")
-        }
-        
-        await viewModel.sendMessage(message, useStreaming: true)
-    }
-    
-    private func handleConversationsChange(_ oldValue: [Conversation], _ newValue: [Conversation]) {
-        // Update local state when the conversation changes
-        if let updatedConversation = newValue.first(where: { $0.id == conversationId }) {
-            // Only update UI state if the conversation data actually changed
-            if updatedConversation.title != currentTitle {
-                currentTitle = updatedConversation.title
-            }
-            if updatedConversation.model != currentModel {
-                currentModel = updatedConversation.model
-            }
-            if updatedConversation.provider != currentProvider {
-                currentProvider = updatedConversation.provider
+                await viewModel.sendWhenModelReady(pendingData.message, attachments: pendingData.attachments)
             }
         }
     }
@@ -242,9 +186,9 @@ struct SimpleChatView: View {
             ModelSelectorMenu(
                 currentModel: currentModel,
                 currentProvider: currentProvider,
-                isDisabled: isModelSwitchingDisabled,
-                onSelectCloudModel: changeConversationModel,
-                onSelectLocalModel: changeToLocalModel
+                isDisabled: !viewModel.canSwitchModel,
+                onSelectCloudModel: { model, provider in switchModel(to: model, provider: provider) },
+                onSelectLocalModel: { model in switchModel(to: model.id, provider: .local) }
             )
         }
 
@@ -252,17 +196,12 @@ struct SimpleChatView: View {
             ChatOptionsMenu(
                 isDisabled: viewModel.messages.isEmpty,
                 onRename: {
-                    newTitle = currentTitle.isEmpty ? (conversation?.title ?? "") : currentTitle
+                    newTitle = conversation?.title ?? ""
                     showRenameAlert = true
                 },
                 onExport: export
             )
         }
-    }
-
-    /// Whether model switching should be disabled (during streaming/loading to prevent crashes)
-    private var isModelSwitchingDisabled: Bool {
-        viewModel.isStreaming || viewModel.isLoading || ggufService.isLoading || ggufService.isGenerating
     }
 
     private func sendMessage() {
@@ -293,96 +232,13 @@ struct SimpleChatView: View {
         updatedConversation.title = newTitle
         updatedConversation.updatedAt = Date()
         conversationManager.updateConversation(updatedConversation, moveToTop: true)
-        currentTitle = newTitle
     }
     
-    private func changeConversationModel(to newModel: String, provider: APIProvider) {
-        // Safety guard: prevent model switching during streaming/generation
-        guard !isModelSwitchingDisabled else {
-            Logger.ui.debug("SimpleChatView: Model switch blocked - streaming/loading in progress")
-            return
-        }
-        
-        // Unload local model when switching to API provider
-        if provider != .local && GGUFService.shared.isModelLoaded {
-            GGUFService.shared.unloadModel()
-        }
-        
-        guard var updatedConversation = conversation else {
-            Logger.ui.warning("SimpleChatView: Could not find conversation to update model")
-            return
-        }
-        updatedConversation.model = newModel
-        updatedConversation.provider = provider
-        updatedConversation.updatedAt = Date()
-        conversationManager.updateConversation(updatedConversation, moveToTop: true)
-        
-        // Update local state immediately to reflect the change in UI
-        currentModel = newModel
-        currentProvider = provider
-        
-        // Update context tracker for new model
-        contextTracker.configure(model: newModel, provider: provider)
-        contextTracker.updateFromMessages(viewModel.messages)
-        
-        // Update the ChatViewModel configuration to use the new provider and model
-        do {
-            if let configs = try KeychainService.shared.loadProviderConfigurations() {
-                if let existingConfig = configs.configuration(for: provider) {
-                    let newConfig = APIConfiguration(
-                        provider: provider,
-                        apiKey: existingConfig.apiKey,
-                        model: newModel
-                    )
-                    viewModel.apiConfiguration = newConfig
-                }
-            }
-        } catch {
-            Logger.config.error("Failed to load provider configuration for \(provider.displayName, privacy: .public): \(String(describing: error), privacy: .public)")
-        }
-    }
-    
-    private func changeToLocalModel(_ model: LocalModel) {
-        // Safety guard: prevent model switching during streaming/generation
-        guard !isModelSwitchingDisabled else {
-            Logger.ui.debug("SimpleChatView: Local model switch blocked - streaming/loading in progress")
-            return
-        }
-        
-        guard var updatedConversation = conversation else {
-            Logger.ui.warning("SimpleChatView: Could not find conversation to update to local model")
-            return
-        }
-        updatedConversation.model = model.id
-        updatedConversation.provider = .local
-        updatedConversation.updatedAt = Date()
-        conversationManager.updateConversation(updatedConversation, moveToTop: true)
-        
-        // Update local state
-        currentModel = model.id
-        currentProvider = .local
-        
-        // Update context tracker for local model
-        contextTracker.configure(model: model.id, provider: .local)
-        contextTracker.updateFromMessages(viewModel.messages)
-        
-        // Set the selected model in LocalModelManager
-        localModelManager.selectedModelId = model.id
-        
-        // Create local configuration
-        let localConfig = APIConfiguration(
-            provider: .local,
-            apiKey: "",
-            model: model.id
-        )
-        viewModel.apiConfiguration = localConfig
-        
-        // Load the model in GGUFService
+    private func switchModel(to modelId: String, provider: APIProvider) {
         Task {
             do {
-                try await GGUFService.shared.loadModel(modelId: model.id)
+                try await viewModel.switchModel(to: modelId, provider: provider)
             } catch {
-                Logger.inference.error("Failed to load local model: \(String(describing: error), privacy: .public)")
                 modelLoadErrorMessage = error.localizedDescription
                 showModelLoadError = true
             }

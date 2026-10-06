@@ -43,13 +43,17 @@ class ChatViewModel: ObservableObject {
     // prevent per-chunk `@Published` updates from causing unbounded UI invalidations.
     private var streamingBuffer: String = ""
     
+    /// Load of the chat's local model, so a message sent from HomeView can wait for it.
+    private var localModelLoadTask: Task<Void, Error>?
+
+    private var currentConversation: Conversation? {
+        guard let conversationId = currentConversationId else { return nil }
+        return conversationManager.conversations.first(where: { $0.id == conversationId })
+    }
+
     // Read-only computed property that gets messages from ConversationManager
     var messages: [Message] {
-        guard let conversationId = currentConversationId,
-              let conversation = conversationManager.conversations.first(where: { $0.id == conversationId }) else {
-            return []
-        }
-        return conversation.messages
+        currentConversation?.messages ?? []
     }
     
     // MARK: - Initialization
@@ -83,37 +87,17 @@ class ChatViewModel: ObservableObject {
         currentConversationId = conversation.id
         Logger.chat.debug("Now tracking \(self.messages.count) messages")
         
-        // Get the correct API key for the conversation's provider (not the currently selected provider)
-        do {
-            if let providerConfigs = try KeychainService.shared.loadProviderConfigurations(),
-               let providerConfig = providerConfigs.configuration(for: conversation.provider) {
-                // Use the API key from the conversation's provider configuration
-                let conversationConfig = APIConfiguration(
-                    provider: conversation.provider,
-                    apiKey: providerConfig.apiKey,
-                    model: conversation.model
-                )
-                apiConfiguration = conversationConfig
-                Logger.chat.debug("Updated configuration to use \(conversation.provider.displayName, privacy: .public) with \(conversation.model, privacy: .public)")
-            } else if conversation.provider == .local {
-                // Local models don't need an API key
-                let localConfig = APIConfiguration(
-                    provider: .local,
-                    apiKey: "",
-                    model: conversation.model
-                )
-                apiConfiguration = localConfig
-                Logger.chat.debug("Updated configuration for local model \(conversation.model, privacy: .public)")
-                
-                // Load the local model if not already loaded
-                Task {
-                    await loadLocalModelIfNeeded(modelId: conversation.model)
-                }
-            } else {
-                Logger.chat.warning("No configuration found for provider \(conversation.provider.displayName, privacy: .public)")
-            }
-        } catch {
-            Logger.chat.error("Failed to load provider configuration: \(String(describing: error), privacy: .public)")
+        // Use the conversation's provider and model, not the currently selected default
+        if let conversationConfig = configuration(for: conversation.provider, model: conversation.model) {
+            apiConfiguration = conversationConfig
+            Logger.chat.debug("Updated configuration to use \(conversation.provider.displayName, privacy: .public) with \(conversation.model, privacy: .public)")
+        } else {
+            Logger.chat.warning("No configuration found for provider \(conversation.provider.displayName, privacy: .public)")
+        }
+        
+        if conversation.provider == .local {
+            let modelId = conversation.model
+            localModelLoadTask = Task { try await loadLocalModelIfNeeded(modelId: modelId) }
         }
         
         // Configure context tracker for this conversation
@@ -128,8 +112,25 @@ class ChatViewModel: ObservableObject {
         objectWillChange.send()
     }
     
+    /// The configuration for a provider and model: the stored API key for cloud providers,
+    /// or a keyless configuration for local models. Nil if no key is stored for the provider.
+    private func configuration(for provider: APIProvider, model: String) -> APIConfiguration? {
+        if provider == .local {
+            return APIConfiguration(provider: .local, apiKey: "", model: model)
+        }
+        do {
+            guard let providerConfig = try KeychainService.shared.loadProviderConfigurations()?.configuration(for: provider) else {
+                return nil
+            }
+            return APIConfiguration(provider: provider, apiKey: providerConfig.apiKey, model: model)
+        } catch {
+            Logger.chat.error("Failed to load provider configuration: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+    
     /// Load a local model if it's not already loaded
-    private func loadLocalModelIfNeeded(modelId: String) async {
+    private func loadLocalModelIfNeeded(modelId: String) async throws {
         let ggufService = GGUFService.shared
         
         // Skip if already loaded
@@ -151,7 +152,71 @@ class ChatViewModel: ObservableObject {
             try await ggufService.loadModel(modelId: modelId)
         } catch {
             Logger.chat.error("Failed to load local model: \(String(describing: error), privacy: .public)")
+            throw error
         }
+    }
+    
+    // MARK: - Model Switching
+    
+    /// Whether the model can be changed right now; switching mid-generation can crash.
+    var canSwitchModel: Bool {
+        let ggufService = GGUFService.shared
+        return !isStreaming && !isLoading && !ggufService.isLoading && !ggufService.isGenerating
+    }
+    
+    /// Points the current conversation at a different model and reconfigures for it.
+    /// For a local model this also loads it, and throws if loading fails.
+    func switchModel(to modelId: String, provider: APIProvider) async throws {
+        guard canSwitchModel else {
+            Logger.chat.debug("Model switch blocked - streaming/loading in progress")
+            return
+        }
+        guard var conversation = currentConversation else {
+            Logger.chat.warning("Could not find conversation to switch model")
+            return
+        }
+        
+        // Free the local model's memory when moving to a cloud provider
+        if provider != .local && GGUFService.shared.isModelLoaded {
+            GGUFService.shared.unloadModel()
+        }
+        
+        conversation.model = modelId
+        conversation.provider = provider
+        conversation.updatedAt = Date()
+        conversationManager.updateConversation(conversation, moveToTop: true)
+        
+        contextTracker.configure(model: modelId, provider: provider, localModelManager: nil)
+        contextTracker.updateFromMessages(conversation.messages)
+        
+        if let newConfig = configuration(for: provider, model: modelId) {
+            apiConfiguration = newConfig
+        }
+        
+        if provider == .local {
+            LocalModelManager.shared.selectedModelId = modelId
+            let loadTask = Task { try await loadLocalModelIfNeeded(modelId: modelId) }
+            localModelLoadTask = loadTask
+            try await loadTask.value
+        }
+    }
+    
+    /// Sends the message handed over from HomeView, first waiting for the chat's
+    /// local model to finish loading.
+    func sendWhenModelReady(_ text: String, attachments: [ImageAttachment]) async {
+        if currentConversation?.provider == .local {
+            try? await localModelLoadTask?.value
+            guard GGUFService.shared.isModelLoaded else {
+                Logger.chat.error("Local model failed to load, cannot send pending message")
+                errorMessage = "Local model failed to load. Please try again."
+                showError = true
+                HapticFeedback.error()
+                return
+            }
+        }
+        
+        pendingAttachments = attachments
+        await sendMessage(text)
     }
     
     func sendMessage(_ text: String, useStreaming: Bool = true) async {
