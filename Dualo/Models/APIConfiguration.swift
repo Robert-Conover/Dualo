@@ -49,12 +49,9 @@ enum APIProvider: String, Codable, CaseIterable {
         switch self {
         case .openai:
             return [
-                "gpt-5.2",
-                "gpt-5-mini",
-                "gpt-5-nano",
-                "o3",
-                "o4-mini",
-                "gpt-4.1"
+                "gpt-6-astra",
+                "gpt-6.1-sol",
+                "gpt-6-luna"
             ]
         case .local:
             // Local models are managed separately by LocalModelManager
@@ -65,7 +62,7 @@ enum APIProvider: String, Codable, CaseIterable {
     var defaultModel: String {
         switch self {
         case .openai:
-            return "gpt-5.2"
+            return "gpt-6.1-sol"
         case .local:
             return "" // No default - user must download a model first
         }
@@ -78,11 +75,13 @@ enum APIProvider: String, Codable, CaseIterable {
                 return provider.defaultModel
             }
 
-            if provider.availableModels.contains(model) || model.hasPrefix("gpt-5") || model.hasPrefix("o") || model.hasPrefix("gpt-4.1") {
+            if provider.availableModels.contains(model) {
                 return model
             }
 
-            return provider.defaultModel
+            // Older models (o3, o4-mini, GPT-5.x, GPT-4.1) are retired or on their way out,
+            // so saved chats and settings move to the closest current model.
+            return model.contains("mini") || model.contains("nano") ? "gpt-6-luna" : provider.defaultModel
         case .local:
             return model ?? provider.defaultModel
         }
@@ -100,9 +99,8 @@ enum APIProvider: String, Codable, CaseIterable {
     }
 
     private static func openAIContextSize(for model: String) -> Int {
-        if model.hasPrefix("gpt-4.1") { return 1_000_000 }
-        if model.hasPrefix("o3") || model.hasPrefix("o4") { return 200_000 }
-        if model.hasPrefix("gpt-5") { return 400_000 }
+        // GPT-6 models have a 1.05M window, of which 922K can be input
+        if model.hasPrefix("gpt-6") { return 922_000 }
         return 200_000
     }
 }

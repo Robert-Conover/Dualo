@@ -46,7 +46,7 @@ private final class FakeConversationManager: ConversationManaging {
         conversations = [conversation]
     }
 
-    func createNewConversation() -> Conversation { Conversation(provider: .openai, model: "gpt-4o") }
+    func createNewConversation() -> Conversation { Conversation(provider: .openai, model: "gpt-6.1-sol") }
     func selectConversation(_ conversation: Conversation) { currentConversation = conversation }
     func updateConversation(_ conversation: Conversation, moveToTop: Bool) {
         if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
@@ -92,11 +92,11 @@ struct ChatViewModelTests {
             Message(role: Message.Role.user, content: "Earlier question"),
             Message(role: Message.Role.assistant, content: "Earlier answer")
         ]
-        let conversation = Conversation(title: "Test", messages: existing, provider: .openai, model: "gpt-4o")
+        let conversation = Conversation(title: "Test", messages: existing, provider: .openai, model: "gpt-6.1-sol")
         manager = FakeConversationManager(conversation)
         viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: tracker)
         viewModel.loadConversation(conversation)
-        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "sk-test", model: "gpt-4o")
+        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "sk-test", model: "gpt-6.1-sol")
     }
 
     /// Lets the streaming task run until `condition` holds.
@@ -195,7 +195,7 @@ struct ChatViewModelTests {
     }
 
     @Test func missingAPIKeyShowsConfigurationErrorWithoutSending() async {
-        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "", model: "gpt-4o")
+        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "", model: "gpt-6.1-sol")
         await viewModel.sendMessage("Hi")
 
         #expect(viewModel.showError)

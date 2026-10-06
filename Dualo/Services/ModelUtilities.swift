@@ -15,7 +15,7 @@ enum ModelUtilities {
     
     /// Returns a user-friendly display name for a model identifier
     /// - Parameters:
-    ///   - model: The model identifier (e.g., "gpt-5.2")
+    ///   - model: The model identifier (e.g., "gpt-6.1-sol")
     ///   - localModels: Available local models to check against
     /// - Returns: A formatted display name (e.g., "Claude 3 Sonnet")
     static func displayName(for model: String, localModels: [LocalModel] = []) -> String {
@@ -26,20 +26,12 @@ enum ModelUtilities {
         
         // Map cloud model identifiers to friendly names
         switch model {
-        case "gpt-5.2":
-            return "GPT-5.2"
-        case "gpt-5":
-            return "GPT-5"
-        case "gpt-5-mini":
-            return "GPT-5 Mini"
-        case "gpt-5-nano":
-            return "GPT-5 Nano"
-        case "o3":
-            return "o3"
-        case "o4-mini":
-            return "o4-mini"
-        case "gpt-4.1":
-            return "GPT-4.1"
+        case "gpt-6-astra":
+            return "GPT-6 Astra"
+        case "gpt-6.1-sol":
+            return "GPT-6.1 Sol"
+        case "gpt-6-luna":
+            return "GPT-6 Luna"
         default:
             return model
         }

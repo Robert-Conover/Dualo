@@ -15,7 +15,7 @@ xcodebuild build -project Dualo.xcodeproj -scheme Dualo -destination 'platform=i
 ```bash
 xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
-Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. `ChatFlowUITests` drives the chat screen (send, stop, retry, scroll, rename, export) by launching with `-UITestStubAPI`, which swaps in the DEBUG-only `StubAPIService` (`Utilities/UITestSupport.swift`) so no API key is needed; markers like `[fail]`, `[slow]`, `[drip]` and `[long]` in the message control the stub. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
+Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, retired-model migration, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. `ChatFlowUITests` drives the chat screen (send, stop, retry, scroll, rename, export) by launching with `-UITestStubAPI`, which swaps in the DEBUG-only `StubAPIService` (`Utilities/UITestSupport.swift`) so no API key is needed; markers like `[fail]`, `[slow]`, `[drip]` and `[long]` in the message control the stub. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
 
 LLM.swift is pinned to an exact version via SPM in the Xcode project.
 
