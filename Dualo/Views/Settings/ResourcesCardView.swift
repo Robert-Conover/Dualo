@@ -7,53 +7,39 @@
 
 import SwiftUI
 
-// MARK: - Resources Card View
+// MARK: - Resources Row View
 
+/// Rendered as a plain List row; the containing Section supplies the card styling.
 struct ResourcesCardView: View {
     private var providerURL: URL? {
         URL(string: "https://platform.openai.com")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Resources")
-                .font(.headline)
-                .foregroundStyle(.primary)
+        if let url = providerURL {
+            Link(destination: url) {
+                HStack(spacing: 12) {
+                    SettingsIcon(systemName: "link", color: .blue)
 
-            if let url = providerURL {
-                Link(destination: url) {
-                    HStack {
-                        Label {
-                            Text("Get OpenAI API Key")
-                                .foregroundStyle(.primary)
-                        } icon: {
-                            Image(systemName: "link")
-                                .foregroundStyle(.blue)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.tertiarySystemGroupedBackground))
-                    )
+                    Text("Get an OpenAI API Key")
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
     }
 }
 
 #Preview {
-    ResourcesCardView()
-    .padding()
-    .background(Color(.systemGroupedBackground))
+    List {
+        Section {
+            ResourcesCardView()
+        }
+    }
+    .listStyle(.insetGrouped)
 }

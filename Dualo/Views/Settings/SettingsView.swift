@@ -102,27 +102,10 @@ struct SettingsView: View {
                     showChevron: false
                 )
             }
-            
-            // Privacy info row
-            HStack(spacing: 12) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.green)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("100% Private")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    Text("Models run entirely on your device")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .listRowBackground(
-                Color.green.opacity(0.06)
-            )
         } header: {
             Text("On-Device Models")
+        } footer: {
+            Label("100% private. Models run entirely on your device.", systemImage: "lock.shield.fill")
         }
     }
     
@@ -225,8 +208,6 @@ struct SettingsView: View {
                 validationError: apiKeyValidationError,
                 onKeyChange: handleAPIKeyChange
             )
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
             
             // Test Connection
             TestConnectionButtonView(
@@ -242,15 +223,13 @@ struct SettingsView: View {
                     impactFeedback.impactOccurred()
                 }
             )
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-            .listRowBackground(Color.clear)
             
             // Resources link
             ResourcesCardView()
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
         } header: {
             Text("Cloud AI")
+        } footer: {
+            Label("Encrypted and stored securely in Keychain.", systemImage: "lock.fill")
         }
     }
     
