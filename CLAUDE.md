@@ -66,8 +66,7 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 - `Services/` - Business logic: the singletons above plus supporting services (`APIKeyValidator`, `ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
 - `ViewModels/` - ChatViewModel (streaming, message state)
 - `Views/` - SwiftUI views, organized into `Chat/`, `Components/`, and `Settings/` subfolders (plus `HomeView`, `MainTabView`, `SimpleChatView`, `ConversationsSheetView` at the root)
-- `DI/` - `DependencyContainer` (main-actor) holding service protocol implementations; not yet wired into the app or tests (views/view models still use `.shared` directly)
-- `Protocols/` - `ServiceProtocols.swift` — protocol definitions for all injected services
+- `Protocols/` - `ServiceProtocols.swift` — `ConversationManaging` and `ContextTracking`, which (with `APIServiceProtocol` in `APIService.swift`) let tests inject fakes via `ChatViewModel`'s custom init; views use `.shared` directly
 - `Utilities/` - `HapticFeedback`
 - `Extensions/` - Theme colors, view modifiers, compatibility shims
 

@@ -9,7 +9,7 @@ import Foundation
 import Security
 import OSLog
 
-class KeychainService: KeychainServicing {
+class KeychainService {
     static let shared = KeychainService()
 
     // Use bundle identifier for better security isolation

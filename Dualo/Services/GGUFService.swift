@@ -62,7 +62,7 @@ struct GenerationStats {
 // MARK: - GGUF Service
 
 @MainActor
-class GGUFService: ObservableObject, GGUFServicing {
+class GGUFService: ObservableObject {
     static let shared = GGUFService()
     
     // MARK: - Published Properties
