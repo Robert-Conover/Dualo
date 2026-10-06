@@ -67,8 +67,6 @@ struct SettingsView: View {
                 set: { if !$0 { saveError = nil } }
             )) {
                 Button("OK") {
-                    let errorFeedback = UINotificationFeedbackGenerator()
-                    errorFeedback.notificationOccurred(.error)
                     saveError = nil
                 }
             } message: {
@@ -131,7 +129,7 @@ struct SettingsView: View {
         let (letter, colors) = iconConfig(for: model)
         
         return ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 6)
                 .fill(
                     LinearGradient(
                         colors: colors.map { $0.opacity(0.2) },
@@ -139,10 +137,10 @@ struct SettingsView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 36, height: 36)
+                .frame(width: 28, height: 28)
             
             Text(letter)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(
                     LinearGradient(
                         colors: colors,
@@ -215,13 +213,12 @@ struct SettingsView: View {
                     withAnimation {
                         connectionTestResult = nil
                     }
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                    impactFeedback.impactOccurred()
+                    HapticFeedback.light()
                 }
             )
             
             // Resources link
-            ResourcesCardView()
+            APIKeyLinkRow()
         } header: {
             Text("Cloud AI")
         } footer: {
@@ -293,6 +290,7 @@ struct SettingsView: View {
             }
         } catch {
             saveError = "Failed to save API key: \(error.localizedDescription)"
+            HapticFeedback.error()
         }
     }
     
@@ -323,8 +321,7 @@ struct SettingsView: View {
         isTestingConnection = true
         connectionTestResult = nil
         
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
+        HapticFeedback.medium()
         
         Task {
             do {
@@ -334,18 +331,14 @@ struct SettingsView: View {
                 await MainActor.run {
                     isTestingConnection = false
                     connectionTestResult = .success
-                    
-                    let successFeedback = UINotificationFeedbackGenerator()
-                    successFeedback.notificationOccurred(.success)
+                    HapticFeedback.success()
                 }
             } catch {
                 Logger.config.error("Connection test failed: \(String(describing: error), privacy: .public)")
                 await MainActor.run {
                     isTestingConnection = false
                     connectionTestResult = .failure(connectionFailureMessage(for: error))
-                    
-                    let errorFeedback = UINotificationFeedbackGenerator()
-                    errorFeedback.notificationOccurred(.error)
+                    HapticFeedback.error()
                 }
             }
         }
