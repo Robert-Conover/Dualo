@@ -134,6 +134,7 @@ struct SimpleChatView: View {
                 Logger.ui.error("SimpleChatView: Local model failed to load, cannot send pending message")
                 viewModel.errorMessage = "Local model failed to load. Please try again."
                 viewModel.showError = true
+                HapticFeedback.error()
                 return
             }
             Logger.ui.debug("SimpleChatView: Local model loaded, sending pending message")
@@ -240,8 +241,7 @@ struct SimpleChatView: View {
             VStack(spacing: 10) {
                 ForEach(quickPrompts, id: \.1) { emoji, text in
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         messageText = text
                         isInputFocused = true
                     }) {
@@ -290,8 +290,7 @@ struct SimpleChatView: View {
     }
 
     private func scrollToBottom() {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        HapticFeedback.light()
         performScrollToBottom?()
     }
     
@@ -725,8 +724,6 @@ private struct AlertsModifier: ViewModifier {
             .alert("Error", isPresented: $showError) {
                 Button("OK") {
                     showError = false
-                    let notificationFeedback = UINotificationFeedbackGenerator()
-                    notificationFeedback.notificationOccurred(.error)
                 }
             } message: {
                 Text(errorMessage)

@@ -314,8 +314,7 @@ class ChatViewModel: ObservableObject {
                         updateMessageStatus(userMsgId, status: .sent)
 
                         // Haptic feedback on first token - immediate confirmation message was accepted
-                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
-                        sentFeedback.impactOccurred()
+                        HapticFeedback.light()
 
                         Logger.chat.debug("Marked user message as sent (first token received)")
                     }
@@ -399,8 +398,7 @@ class ChatViewModel: ObservableObject {
         streamingUserMessageId = nil  // Clear to prevent background task from overwriting status
         hasMarkedUserMessageSent = false
         
-        let cancelFeedback = UIImpactFeedbackGenerator(style: .light)
-        cancelFeedback.impactOccurred()
+        HapticFeedback.light()
     }
     
     func clearConversation() {
@@ -493,8 +491,7 @@ class ChatViewModel: ObservableObject {
         streamingUserMessageId = nil
         streamingMessageId = nil
 
-        let errorFeedback = UINotificationFeedbackGenerator()
-        errorFeedback.notificationOccurred(.error)
+        HapticFeedback.error()
     }
     
     // MARK: - Message Status Updates
@@ -572,8 +569,7 @@ class ChatViewModel: ObservableObject {
                         updateMessageStatus(userMsgId, status: .sent)
 
                         // Haptic feedback on first token - immediate confirmation message was accepted
-                        let sentFeedback = UIImpactFeedbackGenerator(style: .light)
-                        sentFeedback.impactOccurred()
+                        HapticFeedback.light()
                     }
 
                     updateStreamingMessageContent()

@@ -102,8 +102,7 @@ struct HomeView: View {
                     .onEnded { gesture in
                         if gesture.translation.width > 100 {
                             // Swipe right to open conversations
-                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                            impactFeedback.impactOccurred()
+                            HapticFeedback.light()
                             showConversations = true
                         }
                     }
@@ -162,8 +161,7 @@ struct HomeView: View {
     
     private var settingsButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
+            HapticFeedback.light()
             showSettings = true
         }) {
             Image(systemName: "gearshape")
@@ -178,8 +176,7 @@ struct HomeView: View {
     
     private var conversationsButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
+            HapticFeedback.light()
             showConversations = true
         }) {
             Image(systemName: "bubble.left")
@@ -272,8 +269,7 @@ struct HomeView: View {
     @ViewBuilder
     private var newChatButton: some View {
         Button(action: {
-            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-            impactFeedback.impactOccurred()
+            HapticFeedback.medium()
             
             let newConversation = conversationManager.createNewConversation()
             selectedConversation = newConversation
@@ -355,8 +351,7 @@ struct HomeView: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 ForEach(promptSuggestions, id: \.1) { emoji, text in
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         messageText = text
                         isInputFocused = true
                     }) {
@@ -402,8 +397,7 @@ struct HomeView: View {
                 HStack(spacing: 8) {
                     // + button for attachments
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                         showAttachmentOptions = true
                     }) {
                         Image(systemName: "plus")
@@ -427,8 +421,7 @@ struct HomeView: View {
                     
                     // Send button with bounce animation
                     Button(action: {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.medium()
                         sendMessage()
                     }) {
                         Image(systemName: "arrow.up.circle.fill")

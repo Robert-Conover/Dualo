@@ -92,8 +92,7 @@ struct MessageBubbleView: View {
                                 }
                             } else if message.isFailed {
                                 Button(action: {
-                                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                                    impactFeedback.impactOccurred()
+                                    HapticFeedback.medium()
                                     onRetry?()
                                 }) {
                                     HStack(spacing: 4) {
@@ -157,8 +156,7 @@ struct MessageBubbleView: View {
                     Button(action: {
                         // Use displayContent to copy what the user actually sees (including streaming snapshot)
                         UIPasteboard.general.string = displayContent
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
+                        HapticFeedback.light()
                     }) {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
@@ -189,8 +187,7 @@ struct MessageBubbleView: View {
                 showTimestamp.toggle()
             }
             
-            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-            impactFeedback.impactOccurred()
+            HapticFeedback.light()
         }
     }
 
