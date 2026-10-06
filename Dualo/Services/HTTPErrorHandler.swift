@@ -21,6 +21,12 @@ struct HTTPErrorHandler {
         if response.statusCode == 401 {
             throw NetworkError.invalidAPIKey
         } else if response.statusCode == 429 {
+            // OpenAI uses 429 for both rate limits and exhausted billing quota
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorData["error"] as? [String: Any],
+               error["code"] as? String == "insufficient_quota" {
+                throw NetworkError.quotaExceeded
+            }
             throw NetworkError.rateLimitExceeded
         } else if response.statusCode >= 400 {
             // Attempt to parse provider-specific error details

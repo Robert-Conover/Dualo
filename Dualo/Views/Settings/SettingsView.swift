@@ -29,10 +29,6 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
     
-    private var currentAPIKey: String {
-        openAIAPIKey
-    }
-    
     var body: some View {
         NavigationStack {
             List {
@@ -211,7 +207,7 @@ struct SettingsView: View {
             
             // Test Connection
             TestConnectionButtonView(
-                isAPIKeyEmpty: currentAPIKey.isEmpty,
+                isAPIKeyEmpty: trimmedAPIKey.isEmpty,
                 isTestingConnection: isTestingConnection,
                 connectionTestResult: connectionTestResult,
                 onTest: testConnection,
@@ -239,13 +235,18 @@ struct SettingsView: View {
         debounceTask?.cancel()
         connectionTestResult = nil
         
-        apiKeyValidationError = validateAPIKeyFormat(newKey)
-        
+        // Flag a wrong prefix right away, but hold the length check until typing
+        // pauses so a key being typed isn't called "too short" on every keystroke.
+        apiKeyValidationError = validateAPIKeyFormat(newKey, checkLength: false)
+
         debounceTask = Task { @MainActor in
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
-                
+
                 if !Task.isCancelled {
+                    withAnimation {
+                        apiKeyValidationError = validateAPIKeyFormat(openAIAPIKey)
+                    }
                     saveAPIKey()
                 }
             } catch {
@@ -267,9 +268,10 @@ struct SettingsView: View {
     }
     
     private func saveAPIKey() {
-        let apiKey = openAIAPIKey
+        // Pasted keys often carry a trailing newline or space; never store those.
+        let apiKey = trimmedAPIKey
         
-        guard apiKey.isEmpty || isAPIKeyValid(apiKey) else { return }
+        guard apiKey.isEmpty || validateAPIKeyFormat(apiKey) == nil else { return }
         
         do {
             var configs = try KeychainService.shared.loadProviderConfigurations() ?? ProviderConfigurations()
@@ -294,15 +296,12 @@ struct SettingsView: View {
         }
     }
     
-    private func isAPIKeyValid(_ apiKey: String) -> Bool {
-        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        guard !trimmedKey.isEmpty else { return false }
-
-        return trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) && trimmedKey.count > 20
+    private var trimmedAPIKey: String {
+        openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    private func validateAPIKeyFormat(_ apiKey: String) -> String? {
+    /// Single source of truth for key format: the inline error and the save guard both use it.
+    private func validateAPIKeyFormat(_ apiKey: String, checkLength: Bool = true) -> String? {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if trimmedKey.isEmpty {
@@ -311,6 +310,10 @@ struct SettingsView: View {
 
         if !trimmedKey.hasPrefix(AppConstants.Security.openaiKeyPrefix) {
             return "OpenAI API keys must start with '\(AppConstants.Security.openaiKeyPrefix)'"
+        }
+        
+        if checkLength && trimmedKey.count < AppConstants.Security.openaiKeyMinLength {
+            return "This key looks too short. Check that it was copied in full."
         }
         
         return nil
@@ -325,17 +328,8 @@ struct SettingsView: View {
         
         Task {
             do {
-                let config = APIConfiguration(
-                    provider: .openai,
-                    apiKey: openAIAPIKey,
-                    model: APIProvider.openai.defaultModel
-                )
-                
-                let _ = try await APIService.shared.sendMessage(
-                    "Hello! Please respond with 'Connection successful' if you receive this.",
-                    history: [],
-                    config: config
-                )
+                // Listing models verifies the key without spending tokens on a completion.
+                _ = try await APIService.shared.fetchAvailableModels(for: .openai, apiKey: trimmedAPIKey)
                 
                 await MainActor.run {
                     isTestingConnection = false
@@ -345,15 +339,48 @@ struct SettingsView: View {
                     successFeedback.notificationOccurred(.success)
                 }
             } catch {
+                Logger.config.error("Connection test failed: \(String(describing: error), privacy: .public)")
                 await MainActor.run {
                     isTestingConnection = false
-                    connectionTestResult = .failure("Failed")
+                    connectionTestResult = .failure(connectionFailureMessage(for: error))
                     
                     let errorFeedback = UINotificationFeedbackGenerator()
                     errorFeedback.notificationOccurred(.error)
                 }
             }
         }
+    }
+    
+    private func connectionFailureMessage(for error: Error) -> String {
+        if let networkError = error as? NetworkError {
+            switch networkError {
+            case .invalidAPIKey:
+                return "Invalid API key"
+            case .quotaExceeded:
+                return "Out of credits. Check your OpenAI billing."
+            case .rateLimitExceeded:
+                return "Rate limited. Try again shortly."
+            case .networkUnavailable:
+                return "No internet connection"
+            case .serverError:
+                return "OpenAI returned an error. Try again later."
+            default:
+                return "Connection failed"
+            }
+        }
+        
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                return "No internet connection"
+            case .timedOut:
+                return "Request timed out"
+            default:
+                break
+            }
+        }
+        
+        return "Connection failed"
     }
 }
 
