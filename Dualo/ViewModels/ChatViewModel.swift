@@ -27,16 +27,16 @@ class ChatViewModel: ObservableObject {
 
     private var streamingTask: Task<Void, Never>?
     private var currentConversationId: UUID?
+    
+    // MARK: - Streaming State
+    
+    /// The assistant placeholder being filled by the current stream
     private var streamingMessageId: UUID?
-    
-    // Throttling for streaming persistence
-    private var lastPersistTime: Date = .distantPast
-    private var lastPersistedLength: Int = 0
-    private let persistThrottleInterval: TimeInterval = 0.5 // Max once per 500ms
-    private let persistCharThreshold: Int = 100 // Or every 100 characters
-    
-    // Throttling for streaming UI updates (avoids excessive view diffing)
-    private var lastUIUpdateTime: Date = .distantPast
+    /// The user message the current stream is replying to
+    private var streamingUserMessageId: UUID?
+    /// Whether the user message has been marked as sent (first token received)
+    private var hasMarkedUserMessageSent = false
+    private var throttle = StreamingThrottle()
     
     // Source-of-truth streaming buffer (NOT published).
     // We only publish snapshots to `streamingMessageContent` at a bounded cadence to
@@ -219,149 +219,78 @@ class ChatViewModel: ObservableObject {
         await sendMessage(text)
     }
     
-    func sendMessage(_ text: String, useStreaming: Bool = true) async {
-        guard let config = apiConfiguration,
-              config.provider == .local || !config.apiKey.isEmpty else {
-            errorMessage = StringConstants.Errors.configurationRequired
-            showError = true
-            return
-        }
-
-        guard currentConversationId != nil else { return }
-
+    // MARK: - Sending
+    
+    func sendMessage(_ text: String) async {
+        guard let config = sendableConfiguration(), currentConversationId != nil else { return }
+        
         // Convert pending UI attachments to message attachments
-        let messageAttachments = pendingAttachments.compactMap { $0.toMessageAttachment() }
-
-        // Clear pending attachments after converting
-        let attachmentsForRequest = messageAttachments
+        let attachments = pendingAttachments.compactMap { $0.toMessageAttachment() }
         pendingAttachments = []
-
-        // Create user message with "sending" status
-        let userMessage = Message(role: Message.Role.user, content: text, attachments: messageAttachments, sendStatus: .sending)
+        
+        let history = messages
+        let userMessage = Message(role: Message.Role.user, content: text, attachments: attachments, sendStatus: .sending)
         addMessageToConversation(userMessage)
-        let userMessageId = userMessage.id
-
-        if useStreaming {
-            await streamMessage(text, attachments: attachmentsForRequest, userMessageId: userMessageId)
-        } else {
-            isLoading = true
-
-            do {
-                let response = try await apiService.sendMessage(
-                    text,
-                    history: Array(messages.dropLast()),
-                    config: config,
-                    attachments: attachmentsForRequest,
-                    conversationId: currentConversationId
-                )
-
-                // Mark user message as sent
-                updateMessageStatus(userMessageId, status: .sent)
-                
-                let assistantMessage = Message(role: Message.Role.assistant, content: response)
-                addMessageToConversation(assistantMessage)
-            } catch {
-                handleError(error, userMessageId: userMessageId)
-            }
-
-            isLoading = false
-        }
+        
+        startStreaming(text, history: history, attachments: attachments, userMessageId: userMessage.id, config: config)
     }
     
-    private func addMessageToConversation(_ message: Message) {
-        guard let conversationId = currentConversationId,
-              var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }) else {
+    /// Retry sending a failed message
+    func retryMessage(_ messageId: UUID) async {
+        guard let message = messages.first(where: { $0.id == messageId }),
+              message.sendStatus == .failed,
+              let config = sendableConfiguration() else {
             return
         }
         
-        conversation.addMessage(message)
-        conversationManager.updateConversation(conversation, moveToTop: true)
+        updateMessageStatus(messageId, status: .sending)
         
-        // Update context tracker with new message count
-        contextTracker.updateFromMessages(conversation.messages)
+        // Get message history up to (but not including) this message
+        let history = Array(messages.prefix(while: { $0.id != messageId }))
         
-        objectWillChange.send()
+        startStreaming(message.content, history: history, attachments: message.attachments, userMessageId: messageId, config: config)
     }
     
-    private func updateStreamingMessageContent(forcePersist: Bool = false) {
-        guard let conversationId = currentConversationId,
-              var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }),
-              let messageIndex = conversation.messages.firstIndex(where: { $0.id == streamingMessageId }) else {
-            Logger.chat.warning("Unable to update streaming content: conversationId=\(self.currentConversationId?.uuidString ?? "nil", privacy: .public), streamingMessageId=\(self.streamingMessageId?.uuidString ?? "nil", privacy: .public)")
-            return
-        }
-        
-        // Update message content with current streaming content (in-memory)
-        // IMPORTANT: Use streamingBuffer (source-of-truth), not the throttled published snapshot.
-        conversation.messages[messageIndex].content = streamingBuffer
-        conversation.updatedAt = Date()
-        
-        // Throttle persistence to avoid excessive disk writes
-        // Only persist if: forced, enough time passed, OR enough new content accumulated
-        let now = Date()
-        let timeSinceLastPersist = now.timeIntervalSince(lastPersistTime)
-        let currentLength = streamingBuffer.count
-        let charsSinceLastPersist = currentLength - lastPersistedLength
-        
-        let shouldPersist = forcePersist ||
-                           timeSinceLastPersist >= persistThrottleInterval ||
-                           charsSinceLastPersist >= persistCharThreshold
-        
-        if shouldPersist {
-            conversationManager.updateConversation(conversation, moveToTop: false)
-            lastPersistTime = now
-            lastPersistedLength = currentLength
-            
-            let reason = forcePersist ? "forced" : timeSinceLastPersist >= persistThrottleInterval ? "time" : "chars"
-            Logger.chat.debug("Persisted streaming content (\(currentLength) chars, reason: \(reason, privacy: .public))")
-        }
-        
-        // Throttle UI updates to avoid excessive view diffing during high-frequency streaming
-        let timeSinceLastUIUpdate = now.timeIntervalSince(lastUIUpdateTime)
-        if forcePersist || timeSinceLastUIUpdate >= AppConstants.UI.streamingUIUpdateInterval {
-            // Publish a snapshot for UI/autoscroll observers at a bounded cadence.
-            streamingMessageContent = streamingBuffer
-            lastUIUpdateTime = now
-        }
-    }
-    
-    /// Track the user message ID for the current streaming operation
-    private var streamingUserMessageId: UUID?
-    
-    /// Track whether the user message has been marked as sent (first token received)
-    private var hasMarkedUserMessageSent: Bool = false
-    
-    func streamMessage(_ text: String, attachments: [MessageAttachment] = [], userMessageId: UUID? = nil) async {
+    /// The current configuration if it can send (local, or cloud with a key); otherwise shows the setup error.
+    private func sendableConfiguration() -> APIConfiguration? {
         guard let config = apiConfiguration,
               config.provider == .local || !config.apiKey.isEmpty else {
             errorMessage = StringConstants.Errors.configurationRequired
             showError = true
-            return
+            return nil
         }
-
+        return config
+    }
+    
+    // MARK: - Streaming
+    
+    /// Adds an assistant placeholder and streams the reply to `text` into it.
+    private func startStreaming(
+        _ text: String,
+        history: [Message],
+        attachments: [MessageAttachment],
+        userMessageId: UUID,
+        config: APIConfiguration
+    ) {
         isStreaming = true
         streamingBuffer = ""
         streamingMessageContent = ""
         streamingUserMessageId = userMessageId
         hasMarkedUserMessageSent = false
-
+        throttle = StreamingThrottle()
+        
         // Add a placeholder assistant message that we'll update
         let placeholderMessage = Message(role: Message.Role.assistant, content: "")
         addMessageToConversation(placeholderMessage)
         streamingMessageId = placeholderMessage.id
-
+        
         Logger.chat.debug("Starting stream for conversation \(self.currentConversationId?.uuidString ?? "unknown", privacy: .public), message \(placeholderMessage.id, privacy: .public)")
-
-        // Reset throttling state for new stream
-        lastPersistTime = .distantPast
-        lastPersistedLength = 0
-        lastUIUpdateTime = .distantPast
         
         streamingTask = Task {
             do {
                 let stream = apiService.streamMessage(
                     text,
-                    history: Array(messages.dropLast(2)), // Exclude user message and placeholder
+                    history: history,
                     config: config,
                     attachments: attachments,
                     conversationId: currentConversationId
@@ -377,10 +306,10 @@ class ChatViewModel: ObservableObject {
                        let userMsgId = streamingUserMessageId {
                         hasMarkedUserMessageSent = true
                         updateMessageStatus(userMsgId, status: .sent)
-
+                        
                         // Haptic feedback on first token - immediate confirmation message was accepted
                         HapticFeedback.light()
-
+                        
                         Logger.chat.debug("Marked user message as sent (first token received)")
                     }
                     
@@ -392,38 +321,58 @@ class ChatViewModel: ObservableObject {
                     }
                 }
                 
-                // Force final persist to ensure all content is saved
-                updateStreamingMessageContent(forcePersist: true)
-                
-                Logger.chat.debug("Streaming completed - final length: \(self.streamingMessageContent.count) chars")
-                
-                // Update context tracker with final message content
-                if let conversationId = currentConversationId,
-                   let conversation = conversationManager.conversations.first(where: { $0.id == conversationId }) {
-                    contextTracker.updateFromMessages(conversation.messages)
-                }
-                
-                // Mark user message as sent on success (if not already marked on first token)
-                if !hasMarkedUserMessageSent, let userMsgId = streamingUserMessageId {
-                    updateMessageStatus(userMsgId, status: .sent)
-                }
-                
-                // Streaming completed successfully
-                isStreaming = false
-                streamingBuffer = ""
-                streamingMessageContent = ""
-                streamingMessageId = nil
-                streamingUserMessageId = nil
-                
-                // Explicitly trigger a view update to ensure conversation sync
-                objectWillChange.send()
-
+                // stopStreaming() has already saved the partial reply and reset state
+                guard !Task.isCancelled else { return }
+                finishStreaming()
             } catch {
                 if !Task.isCancelled {
                     handleStreamingError(error)
                 }
             }
         }
+    }
+    
+    private func updateStreamingMessageContent(forcePersist: Bool = false) {
+        guard var conversation = currentConversation,
+              let messageIndex = conversation.messages.firstIndex(where: { $0.id == streamingMessageId }) else {
+            Logger.chat.warning("Unable to update streaming content: conversationId=\(self.currentConversationId?.uuidString ?? "nil", privacy: .public), streamingMessageId=\(self.streamingMessageId?.uuidString ?? "nil", privacy: .public)")
+            return
+        }
+        
+        let decision = throttle.check(length: streamingBuffer.count, force: forcePersist)
+        
+        if decision.persist {
+            // IMPORTANT: Use streamingBuffer (source-of-truth), not the throttled published snapshot.
+            conversation.messages[messageIndex].content = streamingBuffer
+            conversation.updatedAt = Date()
+            conversationManager.updateConversation(conversation, moveToTop: false)
+            Logger.chat.debug("Persisted streaming content (\(self.streamingBuffer.count) chars\(forcePersist ? ", forced" : "", privacy: .public))")
+        }
+        
+        if decision.updateUI {
+            // Publish a snapshot for UI/autoscroll observers at a bounded cadence.
+            streamingMessageContent = streamingBuffer
+        }
+    }
+    
+    private func finishStreaming() {
+        // Force final persist to ensure all content is saved
+        updateStreamingMessageContent(forcePersist: true)
+        
+        Logger.chat.debug("Streaming completed - final length: \(self.streamingBuffer.count) chars")
+        
+        // Update context tracker with final message content
+        contextTracker.updateFromMessages(messages)
+        
+        // Mark user message as sent on success (if not already marked on first token)
+        if !hasMarkedUserMessageSent, let userMsgId = streamingUserMessageId {
+            updateMessageStatus(userMsgId, status: .sent)
+        }
+        
+        resetStreamingState()
+        
+        // Explicitly trigger a view update to ensure conversation sync
+        objectWillChange.send()
     }
     
     func stopStreaming() {
@@ -433,18 +382,15 @@ class ChatViewModel: ObservableObject {
         apiService.stopStreaming()
         isStreaming = false
         
-        // Preserve partial content if any exists
+        // Preserve partial content if any exists, otherwise drop the empty placeholder
         if !streamingBuffer.isEmpty {
-            updateStreamingMessageContent(forcePersist: true) // Force persist on stop
+            updateStreamingMessageContent(forcePersist: true)
             Logger.chat.debug("Preserved partial streaming content (\(self.streamingBuffer.count) chars)")
-        } else if !messages.isEmpty && messages.last?.content.isEmpty == true {
-            // Only remove if truly empty
-            removeLastMessage()
+        } else if let placeholderId = streamingMessageId {
+            removeMessage(placeholderId)
             Logger.chat.debug("Removed empty placeholder message")
         }
         
-        // Mark user message based on whether content was received
-        // Must do this BEFORE clearing streamingUserMessageId
         if let userMsgId = streamingUserMessageId {
             if hasMarkedUserMessageSent {
                 // Content was received — user intentionally stopped, keep as sent
@@ -457,48 +403,44 @@ class ChatViewModel: ObservableObject {
             }
         }
         
-        streamingBuffer = ""
-        streamingMessageContent = ""
-        streamingMessageId = nil
-        streamingUserMessageId = nil  // Clear to prevent background task from overwriting status
-        hasMarkedUserMessageSent = false
+        resetStreamingState()
         
         HapticFeedback.light()
     }
     
-    func clearConversation() {
-        guard let conversationId = currentConversationId,
-              var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }) else {
-            return
+    private func handleStreamingError(_ error: Error) {
+        if let networkError = error as? NetworkError {
+            errorMessage = networkError.localizedDescription
+        } else {
+            errorMessage = "Streaming error: \(error.localizedDescription)"
+        }
+        showError = true
+        
+        // Remove the incomplete assistant message (placeholder)
+        if let placeholderId = streamingMessageId {
+            removeMessage(placeholderId)
         }
         
-        conversation.clearMessages()
-        conversationManager.updateConversation(conversation, moveToTop: false)
-        objectWillChange.send()
+        // Mark user message as failed instead of removing it
+        if let userMsgId = streamingUserMessageId {
+            updateMessageStatus(userMsgId, status: .failed)
+        }
+        
+        resetStreamingState()
+        
+        HapticFeedback.error()
     }
     
-    func retryLastMessage() async {
-        guard let lastUserMessage = messages.last(where: { $0.role == Message.Role.user }) else {
-            return
-        }
-        
-        if messages.last?.role == Message.Role.assistant {
-            removeLastMessage()
-        }
-        
-        await sendMessage(lastUserMessage.content)
+    private func resetStreamingState() {
+        isStreaming = false
+        streamingBuffer = ""
+        streamingMessageContent = ""
+        streamingMessageId = nil
+        streamingUserMessageId = nil
+        hasMarkedUserMessageSent = false
     }
     
-    private func removeLastMessage() {
-        guard let conversationId = currentConversationId,
-              var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }) else {
-            return
-        }
-        
-        conversation.removeLastMessage()
-        conversationManager.updateConversation(conversation, moveToTop: false)
-        objectWillChange.send()
-    }
+    // MARK: - Configuration
     
     func refreshConfiguration() {
         loadConfiguration()
@@ -516,151 +458,31 @@ class ChatViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Conversation Updates
     
-    private func handleError(_ error: Error, userMessageId: UUID? = nil) {
-        if let networkError = error as? NetworkError {
-            errorMessage = networkError.localizedDescription
-        } else {
-            errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
-        }
-        showError = true
-        
-        // Mark user message as failed instead of removing it
-        if let msgId = userMessageId {
-            updateMessageStatus(msgId, status: .failed)
-        }
-    }
-    
-    private func handleStreamingError(_ error: Error) {
-        isStreaming = false
-        streamingBuffer = ""
-        streamingMessageContent = ""
-        
-        if let networkError = error as? NetworkError {
-            errorMessage = networkError.localizedDescription
-        } else {
-            errorMessage = "Streaming error: \(error.localizedDescription)"
-        }
-        showError = true
-        
-        // Remove the incomplete assistant message (placeholder)
-        if !messages.isEmpty && messages.last?.role == Message.Role.assistant {
-            removeLastMessage()
-        }
-        
-        // Mark user message as failed instead of removing it
-        if let userMsgId = streamingUserMessageId {
-            updateMessageStatus(userMsgId, status: .failed)
-        }
-        
-        streamingUserMessageId = nil
-        streamingMessageId = nil
-
-        HapticFeedback.error()
-    }
-    
-    // MARK: - Message Status Updates
-    
-    private func updateMessageStatus(_ messageId: UUID, status: SendStatus) {
-        guard let conversationId = currentConversationId,
-              var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }),
-              let messageIndex = conversation.messages.firstIndex(where: { $0.id == messageId }) else {
-            return
-        }
-        
-        conversation.messages[messageIndex].sendStatus = status
-        conversationManager.updateConversation(conversation, moveToTop: false)
+    /// Applies `change` to the current conversation and saves it.
+    private func updateCurrentConversation(moveToTop: Bool = false, _ change: (inout Conversation) -> Void) {
+        guard var conversation = currentConversation else { return }
+        change(&conversation)
+        conversationManager.updateConversation(conversation, moveToTop: moveToTop)
         objectWillChange.send()
     }
     
-    /// Retry sending a failed message
-    func retryMessage(_ messageId: UUID) async {
-        guard let conversationId = currentConversationId,
-              let conversation = conversationManager.conversations.first(where: { $0.id == conversationId }),
-              let message = conversation.messages.first(where: { $0.id == messageId }),
-              message.sendStatus == .failed else {
-            return
-        }
+    private func addMessageToConversation(_ message: Message) {
+        updateCurrentConversation(moveToTop: true) { $0.addMessage(message) }
         
-        // Mark as sending again
-        updateMessageStatus(messageId, status: .sending)
-        
-        guard let config = apiConfiguration,
-              config.provider == .local || !config.apiKey.isEmpty else {
-            updateMessageStatus(messageId, status: .failed)
-            errorMessage = StringConstants.Errors.configurationRequired
-            showError = true
-            return
-        }
-        
-        // Get message history up to (but not including) this message
-        let historyUpToMessage = Array(messages.prefix(while: { $0.id != messageId }))
-        
-        isStreaming = true
-        streamingBuffer = ""
-        streamingMessageContent = ""
-        streamingUserMessageId = messageId
-        hasMarkedUserMessageSent = false
-        
-        // Add a placeholder assistant message
-        let placeholderMessage = Message(role: Message.Role.assistant, content: "")
-        addMessageToConversation(placeholderMessage)
-        streamingMessageId = placeholderMessage.id
-        
-        // Reset throttling state
-        lastPersistTime = .distantPast
-        lastPersistedLength = 0
-        lastUIUpdateTime = .distantPast
-        
-        streamingTask = Task {
-            do {
-                let stream = apiService.streamMessage(
-                    message.content,
-                    history: historyUpToMessage,
-                    config: config,
-                    attachments: message.attachments,
-                    conversationId: conversationId
-                )
-                
-                for try await chunk in stream {
-                    if Task.isCancelled { break }
-                    
-                    streamingBuffer += chunk
-                    
-                    // Mark user message as sent on first non-empty chunk (request was accepted)
-                    if !hasMarkedUserMessageSent && !streamingBuffer.isEmpty,
-                       let userMsgId = streamingUserMessageId {
-                        hasMarkedUserMessageSent = true
-                        updateMessageStatus(userMsgId, status: .sent)
-
-                        // Haptic feedback on first token - immediate confirmation message was accepted
-                        HapticFeedback.light()
-                    }
-
-                    updateStreamingMessageContent()
-                }
-
-                updateStreamingMessageContent(forcePersist: true)
-
-                // Mark user message as sent (if not already marked on first token)
-                if !hasMarkedUserMessageSent {
-                    updateMessageStatus(messageId, status: .sent)
-                }
-
-                isStreaming = false
-                streamingBuffer = ""
-                streamingMessageContent = ""
-                streamingMessageId = nil
-                streamingUserMessageId = nil
-
-                objectWillChange.send()
-                
-            } catch {
-                if !Task.isCancelled {
-                    handleStreamingError(error)
-                }
-            }
-        }
+        // Update context tracker with new message count
+        contextTracker.updateFromMessages(messages)
     }
     
+    private func removeMessage(_ messageId: UUID) {
+        updateCurrentConversation { $0.removeMessage(id: messageId) }
+    }
+    
+    private func updateMessageStatus(_ messageId: UUID, status: SendStatus) {
+        updateCurrentConversation { conversation in
+            guard let index = conversation.messages.firstIndex(where: { $0.id == messageId }) else { return }
+            conversation.messages[index].sendStatus = status
+        }
+    }
 }

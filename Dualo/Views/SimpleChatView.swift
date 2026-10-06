@@ -215,7 +215,7 @@ struct SimpleChatView: View {
         pendingAttachments = []
 
         Task {
-            await viewModel.sendMessage(trimmedMessage, useStreaming: true)
+            await viewModel.sendMessage(trimmedMessage)
         }
 
         messageText = ""

@@ -15,7 +15,7 @@ xcodebuild build -project Dualo.xcodeproj -scheme Dualo -destination 'platform=i
 ```bash
 xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
-Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, HTTP error mapping, `<think>` handling); add `-only-testing:DualoTests` to skip the slow `DualoUITests`. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
+Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
 
 LLM.swift is pinned to an exact version via SPM in the Xcode project.
 
@@ -54,7 +54,7 @@ Anthropic support was removed; `APIProvider`'s custom decoder maps legacy `"Anth
 
 Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local models stream tokens via `LLM.swift`'s callback. Both use `AsyncThrowingStream<String, Error>` for uniform consumption in `ChatViewModel`.
 
-`ChatViewModel` throttles both UI updates (50ms) and disk persistence (500ms / 100 chars) during streaming to avoid excessive redraws and I/O.
+`ChatViewModel` throttles both UI updates (50ms) and disk persistence (500ms / 100 chars) during streaming to avoid excessive redraws and I/O; `StreamingThrottle` makes those decisions. `sendMessage` and `retryMessage` share one streaming path (`startStreaming`).
 
 ### Context Management
 
@@ -64,7 +64,7 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 
 - `Models/` - Data models (Conversation, Message, APIConfiguration, LocalModel)
 - `Services/` - Business logic: the singletons above plus supporting services (`APIKeyValidator`, `ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
-- `ViewModels/` - ChatViewModel (streaming, message state)
+- `ViewModels/` - ChatViewModel (streaming, message state, per-chat model switching) and `StreamingThrottle`
 - `Views/` - SwiftUI views, organized into `Chat/`, `Components/`, and `Settings/` subfolders (plus `HomeView`, `MainTabView`, `SimpleChatView`, `ConversationsSheetView` at the root)
 - `Protocols/` - `ServiceProtocols.swift` — `ConversationManaging` and `ContextTracking`, which (with `APIServiceProtocol` in `APIService.swift`) let tests inject fakes via `ChatViewModel`'s custom init; views use `.shared` directly
 - `Utilities/` - `HapticFeedback`

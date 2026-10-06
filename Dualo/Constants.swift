@@ -31,6 +31,8 @@ enum AppConstants {
     enum UI {
         // Streaming updates
         static let streamingUIUpdateInterval: TimeInterval = 0.05 // 50ms for smooth token-by-token rendering
+        static let streamingPersistInterval: TimeInterval = 0.5 // Save partial replies at most every 500ms...
+        static let streamingPersistCharThreshold = 100 // ...or every 100 new characters
         static let streamingProgressLogInterval = 50 // Log every N characters
 
         // Animation
