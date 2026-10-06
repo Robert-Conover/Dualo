@@ -12,7 +12,15 @@ struct MessageContentView: View {
     let isUser: Bool
     @State private var showCopyToast = false
     @State private var copiedMessage = ""
-    @State private var parsedContent: [MessageContentRenderer.ContentType] = []
+    @State private var parsedContent: [MessageContentRenderer.ContentType]
+
+    init(content: String, isUser: Bool) {
+        self.content = content
+        self.isUser = isUser
+        // Parse up front: starting empty and filling in later renders one frame with
+        // no height, which snaps the chat's scroll position to the top when a reply finishes.
+        _parsedContent = State(initialValue: MessageContentRenderer.parse(content))
+    }
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
@@ -54,8 +62,8 @@ struct MessageContentView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: content) {
-            parsedContent = MessageContentRenderer.parse(content)
+        .onChange(of: content) { _, newContent in
+            parsedContent = MessageContentRenderer.parse(newContent)
         }
     }
 }

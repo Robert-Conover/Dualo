@@ -87,16 +87,11 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         }
     }
     
-    mutating func removeLastMessage() {
-        if !messages.isEmpty {
-            messages.removeLast()
+    mutating func removeMessage(id: UUID) {
+        if let index = messages.firstIndex(where: { $0.id == id }) {
+            messages.remove(at: index)
             updatedAt = Date()
         }
-    }
-    
-    mutating func clearMessages() {
-        messages = []
-        updatedAt = Date()
     }
     
     var lastMessage: Message? {

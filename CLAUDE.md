@@ -15,7 +15,7 @@ xcodebuild build -project Dualo.xcodeproj -scheme Dualo -destination 'platform=i
 ```bash
 xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
-Tests use Swift Testing (`import Testing`, `@Test`); `DualoTests` is currently a placeholder. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
+Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, retired-model migration, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. `ChatFlowUITests` drives the chat screen (send, stop, retry, scroll, rename, export) by launching with `-UITestStubAPI`, which swaps in the DEBUG-only `StubAPIService` (`Utilities/UITestSupport.swift`) so no API key is needed; markers like `[fail]`, `[slow]`, `[drip]` and `[long]` in the message control the stub. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
 
 LLM.swift is pinned to an exact version via SPM in the Xcode project.
 
@@ -54,20 +54,19 @@ Anthropic support was removed; `APIProvider`'s custom decoder maps legacy `"Anth
 
 Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local models stream tokens via `LLM.swift`'s callback. Both use `AsyncThrowingStream<String, Error>` for uniform consumption in `ChatViewModel`.
 
-`ChatViewModel` throttles both UI updates (50ms) and disk persistence (500ms / 100 chars) during streaming to avoid excessive redraws and I/O.
+`ChatViewModel` throttles both UI updates (50ms) and disk persistence (500ms / 100 chars) during streaming to avoid excessive redraws and I/O; `StreamingThrottle` makes those decisions. `sendMessage` and `retryMessage` share one streaming path (`startStreaming`).
 
 ### Context Management
 
-`GGUFService` tracks `currentConversationId` and resets the LLM's KV cache when switching conversations. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both.
+`GGUFService` tracks `currentConversationId` and resets the LLM's KV cache when switching conversations. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both. `ThinkingBlockTests` covers both sides.
 
 ### File Structure
 
 - `Models/` - Data models (Conversation, Message, APIConfiguration, LocalModel)
-- `Services/` - Business logic: the singletons above plus supporting services (`ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
-- `ViewModels/` - ChatViewModel (streaming, message state)
+- `Services/` - Business logic: the singletons above plus supporting services (`APIKeyValidator`, `ChatExportService`, `ContextTracker`, `HTTPErrorHandler`, `ImagePickerService`, `KeychainQueryBuilder`, `MessageContentRenderer`, `ModelUtilities`, `NetworkError`) and `MessageFormatters/` (protocol + `OpenAIMessageFormatter`)
+- `ViewModels/` - ChatViewModel (streaming, message state, per-chat model switching) and `StreamingThrottle`
 - `Views/` - SwiftUI views, organized into `Chat/`, `Components/`, and `Settings/` subfolders (plus `HomeView`, `MainTabView`, `SimpleChatView`, `ConversationsSheetView` at the root)
-- `DI/` - `DependencyContainer` (main-actor) holding service protocol implementations; not yet wired into the app or tests (views/view models still use `.shared` directly)
-- `Protocols/` - `ServiceProtocols.swift` — protocol definitions for all injected services
+- `Protocols/` - `ServiceProtocols.swift` — `ConversationManaging` and `ContextTracking`, which (with `APIServiceProtocol` in `APIService.swift`) let tests inject fakes via `ChatViewModel`'s custom init; views use `.shared` directly
 - `Utilities/` - `HapticFeedback`
 - `Extensions/` - Theme colors, view modifiers, compatibility shims
 

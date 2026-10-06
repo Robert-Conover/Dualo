@@ -195,7 +195,7 @@ class APIService: APIServiceProtocol {
     }
 
     private func isReasoningModel(_ model: String) -> Bool {
-        model.hasPrefix("gpt-5") || model.hasPrefix("o3") || model.hasPrefix("o4")
+        model.hasPrefix("gpt-6")
     }
 
     // MARK: - True Incremental Streaming Implementations

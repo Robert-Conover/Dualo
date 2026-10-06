@@ -255,15 +255,12 @@ struct ConversationsSheetView: View {
     }
     
     private func shortModelName(_ model: String) -> String {
-        if model.contains("gpt-5.2") { return "5.2" }
-        if model.contains("gpt-5-mini") { return "5 Mini" }
-        if model.contains("gpt-5-nano") { return "5 Nano" }
-        if model.contains("o3") { return "o3" }
-        if model.contains("o4-mini") { return "o4-mini" }
-        if model.contains("gpt-4.1") { return "4.1" }
-        if model.contains("gpt-5") { return "GPT-5" }
-        if model.contains("gpt-4") { return "GPT-4" }
-        return String(model.prefix(8))
+        switch model {
+        case "gpt-6-astra": return "Astra"
+        case "gpt-6.1-sol": return "Sol"
+        case "gpt-6-luna": return "Luna"
+        default: return String(model.prefix(8))
+        }
     }
     
     // MARK: - Search Bar

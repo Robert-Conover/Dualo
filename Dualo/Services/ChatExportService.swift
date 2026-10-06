@@ -174,4 +174,69 @@ class ChatExportService {
             pageAttr.draw(at: CGPoint(x: centeredX, y: pageSize.height - 30))
         }
     }
+
+    // MARK: - Formats & Sharing
+
+    enum Format: CaseIterable {
+        case pdf, markdown, text
+
+        var displayName: String {
+            switch self {
+            case .pdf: return "PDF"
+            case .markdown: return "Markdown"
+            case .text: return "Text"
+            }
+        }
+
+        var fileExtension: String {
+            switch self {
+            case .pdf: return "pdf"
+            case .markdown: return "md"
+            case .text: return "txt"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .pdf: return "doc.richtext"
+            case .markdown: return "doc.text"
+            case .text: return "doc.plaintext"
+            }
+        }
+    }
+
+    @MainActor
+    func makeData(for conversation: Conversation, format: Format) async throws -> Data {
+        switch format {
+        case .pdf: return try await makePDF(for: conversation)
+        case .markdown: return makeMarkdown(for: conversation)
+        case .text: return makeText(for: conversation)
+        }
+    }
+
+    /// Writes the export to a temporary file and presents the system share sheet for it.
+    @MainActor
+    func share(_ conversation: Conversation, as format: Format) async throws {
+        let data = try await makeData(for: conversation, format: format)
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(conversation.title).\(format.fileExtension)")
+        try data.write(to: fileURL)
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              var presentingVC = window.rootViewController else {
+            return
+        }
+        while let presented = presentingVC.presentedViewController {
+            presentingVC = presented
+        }
+
+        let shareSheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if let popover = shareSheet.popoverPresentationController {
+            popover.sourceView = window
+            popover.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        presentingVC.present(shareSheet, animated: true)
+    }
 }
