@@ -90,7 +90,7 @@ class GGUFService: ObservableObject, GGUFServicing {
     private var loadedModelContextSize: Int32 = Int32(AppConstants.LocalModels.maxMobileContextTokens)
 
     /// Cached regex for stripping thinking blocks (compiled once for performance)
-    private static let thinkingBlockRegex: NSRegularExpression? = {
+    nonisolated private static let thinkingBlockRegex: NSRegularExpression? = {
         try? NSRegularExpression(pattern: "<think>[\\s\\S]*?</think>", options: [])
     }()
     
