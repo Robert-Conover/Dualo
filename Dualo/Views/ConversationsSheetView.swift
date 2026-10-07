@@ -282,6 +282,7 @@ struct ConversationsSheetView: View {
                 .font(.system(size: 9, weight: .semibold))
             Text(shortModelName(conversation.model))
                 .font(.system(size: 10, weight: .medium))
+                .lineLimit(1)
         }
         .foregroundStyle(isLocal ? .blue : .green)
         .padding(.horizontal, 8)
@@ -297,7 +298,9 @@ struct ConversationsSheetView: View {
         case "gpt-6-astra": return "Astra"
         case "gpt-6.1-sol": return "Sol"
         case "gpt-6-luna": return "Luna"
-        default: return String(model.prefix(8))
+        default:
+            // Local models are stored by id ("qwen3.5-0.8b-q4"); show their name ("Qwen3.5 0.8B")
+            return LocalModelCatalog.model(withId: model)?.displayName ?? model
         }
     }
     
