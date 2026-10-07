@@ -45,6 +45,11 @@ enum APIProvider: String, Codable, CaseIterable {
         self != .local
     }
 
+    /// Whether messages can include images. Local models are text-only for now.
+    var supportsImageAttachments: Bool {
+        self != .local
+    }
+
     var availableModels: [String] {
         switch self {
         case .openai:

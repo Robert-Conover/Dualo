@@ -195,4 +195,11 @@ final class ChatFlowUITests: XCTestCase {
             waitForExpectations(timeout: 10)
         }
     }
+
+    func testCloudModelChatOffersImageAttachments() {
+        XCTAssertTrue(element("homeAttachButton").waitForExistence(timeout: 10), "Home attach button missing")
+        startChat(with: "Hello")
+        waitForReplyToFinish()
+        XCTAssertTrue(element("chatAttachButton").exists, "Chat attach button missing")
+    }
 }

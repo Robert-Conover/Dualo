@@ -88,7 +88,12 @@ class GGUFService: ObservableObject {
     private var lastGenerationTask: Task<Void, Never>?
     private let localModelManager = LocalModelManager.shared
 
-    nonisolated private static let systemPrompt = "You are a helpful assistant."
+    nonisolated private static let baseSystemPrompt = "You are a helpful assistant."
+
+    /// The system prompt with the user's custom instructions, if any, added after the base prompt.
+    nonisolated static func systemPrompt(with instructions: String) -> String {
+        instructions.isEmpty ? baseSystemPrompt : "\(baseSystemPrompt)\n\n\(instructions)"
+    }
 
     /// Cached regex for stripping thinking blocks (compiled once for performance).
     /// Like `MessageContentRenderer`, an unclosed <think> (reply stopped mid-thought) runs to the end.
@@ -239,6 +244,7 @@ class GGUFService: ObservableObject {
         let llm = self.llm
         let previousGeneration = self.lastGenerationTask
         let isNewConversation = self.currentConversationId != conversationId
+        let systemPrompt = Self.systemPrompt(with: CustomInstructions.current)
 
         // Only convert history if we're switching conversations
         let historyForLLM: [Chat]? = isNewConversation ? self.convertToLLMHistory(history) : nil
@@ -262,6 +268,8 @@ class GGUFService: ObservableObject {
                 self.lastGenerationStats = nil
                 self.currentConversationId = conversationId
             }
+
+            Self.apply(systemPrompt, to: llm)
 
             if isNewConversation {
                 // Conversation changed - clear history and the KV cache, then load this chat's turns
@@ -484,12 +492,23 @@ class GGUFService: ObservableObject {
     /// falling back to ChatML for files that don't include one.
     nonisolated private static func makeLLM(from path: URL, contextSize: Int32) async -> LLM? {
         guard let llm = LLM(from: path, maxTokenCount: contextSize) else { return nil }
-        llm.systemPrompt = systemPrompt
+        llm.systemPrompt = baseSystemPrompt
         if await llm.core.getChatTemplateHint() == nil {
             Logger.inference.info("Model has no embedded chat template, using ChatML")
-            llm.template = .chatML(systemPrompt)
+            llm.template = .chatML(baseSystemPrompt)
         }
         return llm
+    }
+
+    /// Switch the LLM to a new system prompt (custom instructions can change between messages).
+    /// The KV cache keeps whatever still matches, so the next reply re-reads the chat from the change.
+    nonisolated private static func apply(_ systemPrompt: String, to llm: LLM) {
+        guard llm.systemPrompt != systemPrompt else { return }
+        llm.systemPrompt = systemPrompt
+        // The ChatML fallback bakes the system prompt into its template
+        if llm.template != nil {
+            llm.template = .chatML(systemPrompt)
+        }
     }
     
     // MARK: - GGUF File Validation

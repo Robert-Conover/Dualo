@@ -43,6 +43,10 @@ struct HomeView: View {
         return "Select Model"
     }
     
+    private var supportsImageAttachments: Bool {
+        viewModel.apiConfiguration?.provider.supportsImageAttachments ?? true
+    }
+
     private var currentProviderIcon: String {
         if let config = viewModel.apiConfiguration {
             return ModelUtilities.icon(for: config.provider)
@@ -153,6 +157,9 @@ struct HomeView: View {
                     pendingAttachments.append(newImage)
                     capturedImage = nil
                 }
+            }
+            .onChange(of: supportsImageAttachments) { _, supported in
+                if !supported { pendingAttachments = [] }
             }
         }
     }
@@ -395,15 +402,19 @@ struct HomeView: View {
             
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
-                    // + button for attachments
-                    Button(action: {
-                        HapticFeedback.light()
-                        showAttachmentOptions = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24, height: 24)
+                    // + button for attachments (hidden for models that can't take images)
+                    if supportsImageAttachments {
+                        Button(action: {
+                            HapticFeedback.light()
+                            showAttachmentOptions = true
+                        }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 24, height: 24)
+                        }
+                        .accessibilityLabel("Add Attachment")
+                        .accessibilityIdentifier("homeAttachButton")
                     }
                     
                     TextField("Ask anything", text: $messageText, axis: .vertical)

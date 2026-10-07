@@ -234,10 +234,13 @@ class ChatViewModel: ObservableObject {
     func sendMessage(_ text: String) async {
         guard let config = sendableConfiguration(), currentConversationId != nil else { return }
         
-        // Convert pending UI attachments to message attachments
-        let attachments = pendingAttachments.compactMap { $0.toMessageAttachment() }
+        // Convert pending UI attachments to message attachments (dropped if the model can't take images)
+        let attachments = config.provider.supportsImageAttachments
+            ? pendingAttachments.compactMap { $0.toMessageAttachment() }
+            : []
         pendingAttachments = []
-        
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+
         let history = messages
         let userMessage = Message(role: Message.Role.user, content: text, attachments: attachments, sendStatus: .sending)
         addMessageToConversation(userMessage)

@@ -122,7 +122,7 @@ class ContextTracker: ObservableObject, ContextTracking {
     
     /// Update token estimate based on conversation messages
     func updateFromMessages(_ messages: [Message]) {
-        var totalTokens = systemOverhead
+        var totalTokens = systemOverhead + estimateTokens(for: CustomInstructions.current)
         
         for message in messages {
             // Estimate tokens from message content

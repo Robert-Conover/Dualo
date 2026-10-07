@@ -38,9 +38,18 @@ struct OpenAIMessageFormatter: MessageFormatter {
     func formatMessages(
         currentMessage: String,
         history: [Message],
-        attachments: [MessageAttachment]
+        attachments: [MessageAttachment],
+        instructions: String
     ) -> [[String: Any]] {
         var messages: [[String: Any]] = []
+
+        // Custom instructions go first, as a developer message (the system role for reasoning models)
+        if !instructions.isEmpty {
+            messages.append([
+                "role": "developer",
+                "content": instructions
+            ])
+        }
 
         // Format history messages
         for msg in history {

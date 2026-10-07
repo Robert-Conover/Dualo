@@ -18,10 +18,12 @@ protocol MessageFormatter {
     ///   - currentMessage: The current user message to send
     ///   - history: Array of previous messages in the conversation
     ///   - attachments: Array of image attachments for the current message
+    ///   - instructions: The user's custom instructions, or empty for none
     /// - Returns: Array of message dictionaries formatted for the provider's API
     func formatMessages(
         currentMessage: String,
         history: [Message],
-        attachments: [MessageAttachment]
+        attachments: [MessageAttachment],
+        instructions: String
     ) -> [[String: Any]]
 }
