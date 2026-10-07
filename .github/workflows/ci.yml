@@ -1,0 +1,65 @@
+name: CI
+
+# Private repo: macOS minutes use the free Actions allowance 10x faster than Linux,
+# so this runs only the unit tests and only on PRs to main (or by hand).
+# The UI tests (DualoUITests) are slow and stay a local check.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('Dualo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Packages/LLM.swift/Package.swift') }}
+
+      - name: Pick simulator
+        id: sim
+        run: |
+          # Newest iOS runtime's first iPhone, so a runner image update can't break a hardcoded name.
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          def version(key):
+              return [int(n) for n in re.findall(r"\d+", key.split("iOS-")[-1])]
+          for key in sorted((k for k in runtimes if "iOS-" in k), key=version, reverse=True):
+              phones = [d for d in runtimes[key] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[0]["udid"]); break
+          ')
+          test -n "$udid" || { echo "No iPhone simulator found"; xcrun simctl list devices available; exit 1; }
+          xcrun simctl list devices available | grep "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: |
+          xcodebuild test -skipMacroValidation -quiet \
+            -project Dualo.xcodeproj -scheme Dualo \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -derivedDataPath DerivedData \
+            -resultBundlePath results/UnitTests.xcresult \
+            -only-testing:DualoTests
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: results
