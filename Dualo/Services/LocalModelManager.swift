@@ -128,17 +128,14 @@ class LocalModelManager: ObservableObject {
         do {
             let files = try fileManager.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey])
             for file in files where file.pathExtension.lowercased() == "gguf" {
-                let fullFileName = file.lastPathComponent // e.g., "Qwen3-0.6B-Q4_K_M.gguf"
+                let fullFileName = file.lastPathComponent // e.g., "Qwen3.5-0.8B-Q4_K_M.gguf"
                 let fileNameWithoutExtension = file.deletingPathExtension().lastPathComponent
                 
-                // Check if this file belongs to a catalog model (by matching ggufFileName)
-                // This handles the case where a catalog model was downloaded but paths changed
-                let isCatalogModel = models.contains { model in
-                    model.ggufFileName == fullFileName
-                }
-                
-                // Skip if it's a catalog model (already handled by loadAvailableModels)
-                if isCatalogModel {
+                // A catalog model's file: mark it downloaded even if its saved state was lost
+                if let index = models.firstIndex(where: { $0.ggufFileName == fullFileName && !$0.isUserImported }) {
+                    if !models[index].downloadState.isDownloaded {
+                        models[index].downloadState = .downloaded(localPath: file.path)
+                    }
                     continue
                 }
                 
@@ -161,7 +158,6 @@ class LocalModelManager: ObservableObject {
                     description: "User-imported model",
                     recommended: false,
                     minRAMGB: 4, // Conservative estimate
-                    templateType: .chatML, // Default template
                     contextSize: 4096, // Conservative default for unknown models
                     downloadState: .downloaded(localPath: file.path)
                 )
@@ -415,7 +411,6 @@ class LocalModelManager: ObservableObject {
             description: "User-imported model",
             recommended: false,
             minRAMGB: 4,
-            templateType: .chatML,
             contextSize: 4096, // Conservative default for unknown models
             downloadState: .downloaded(localPath: destinationPath.path)
         )

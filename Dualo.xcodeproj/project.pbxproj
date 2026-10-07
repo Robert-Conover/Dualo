@@ -202,7 +202,7 @@
 			mainGroup = 9ADD15452E4AABBC00986D3A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				9A586E492EF866070028651F /* XCRemoteSwiftPackageReference "LLM" */,
+				9A586E492EF866070028651F /* XCLocalSwiftPackageReference "Packages/LLM.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9ADD154F2E4AABBC00986D3A /* Products */;
@@ -570,21 +570,17 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		9A586E492EF866070028651F /* XCRemoteSwiftPackageReference "LLM" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/eastriverlee/LLM.swift";
-			requirement = {
-				kind = exactVersion;
-				version = 2.0.1;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		9A586E492EF866070028651F /* XCLocalSwiftPackageReference "Packages/LLM.swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/LLM.swift;
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		9A586E4A2EF866070028651F /* LLM */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 9A586E492EF866070028651F /* XCRemoteSwiftPackageReference "LLM" */;
+			package = 9A586E492EF866070028651F /* XCLocalSwiftPackageReference "Packages/LLM.swift" */;
 			productName = LLM;
 		};
 /* End XCSwiftPackageProductDependency section */

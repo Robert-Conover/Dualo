@@ -8,16 +8,16 @@ Open `Dualo.xcodeproj` in Xcode, select a simulator or device, and build (Cmd+R)
 
 **Build (CLI):**
 ```bash
-xcodebuild build -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
+xcodebuild build -skipMacroValidation -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
 **Run tests:**
 ```bash
-xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
+xcodebuild test -skipMacroValidation -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
-Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, retired-model migration, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. `ChatFlowUITests` drives the chat screen (send, stop, retry, scroll, rename, export) by launching with `-UITestStubAPI`, which swaps in the DEBUG-only `StubAPIService` (`Utilities/UITestSupport.swift`) so no API key is needed; markers like `[fail]`, `[slow]`, `[drip]` and `[long]` in the message control the stub. Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
+Tests use Swift Testing (`import Testing`, `@Test`). `DualoTests` covers pure logic (API key validation, retired-model migration, HTTP error mapping, `<think>` handling, streaming throttle) and `ChatViewModel`'s send/stream/stop/retry flow against fake services; add `-only-testing:DualoTests` to skip the slow `DualoUITests`. `ChatFlowUITests` drives the chat screen (send, stop, retry, scroll, rename, export) by launching with `-UITestStubAPI`, which swaps in the DEBUG-only `StubAPIService` (`Utilities/UITestSupport.swift`) so no API key is needed; markers like `[fail]`, `[slow]`, `[drip]` and `[long]` in the message control the stub. `GGUFServiceIntegrationTests` run the real Qwen3.5 0.8B model and are skipped unless its GGUF is in the app's `Documents/Models` (see the file header for setup; run with `-parallel-testing-enabled NO`). Swap the simulator name for one installed locally (`xcrun simctl list devices available`).
 
-LLM.swift is pinned to an exact version via SPM in the Xcode project.
+LLM.swift is vendored at `Packages/LLM.swift` (v3.0.3, referenced as a local package) with two small fixes marked `Dualo patch` in `Sources/LLM/LLM.swift`: clearing the KV cache with `llama_memory_clear`, and falling back to a full re-read when trimming the cache fails. Without them, hybrid models like Qwen3.5 crash llama.cpp on the second message. Re-apply them if you update the package. Its `@Generatable` macro needs a one-time "Trust & Enable" in Xcode; CLI builds pass `-skipMacroValidation`.
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 
 ### Context Management
 
-`GGUFService` tracks `currentConversationId` and resets the LLM's KV cache when switching conversations. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both. `ThinkingBlockTests` covers both sides.
+`GGUFService` formats chats with the template embedded in each GGUF file (falling back to ChatML when there isn't one). It tracks `currentConversationId` and resets the LLM's KV cache when switching conversations; within a conversation LLM.swift reuses the cache so only the new message is evaluated. Replies use `thinking: .suppressed`, because LLM.swift otherwise forces reasoning on and small models can think for minutes on a phone. Any reasoning a model still produces streams separately from the answer, and `ThinkingTagStream` merges them back into one string with `<think>` tags. It strips `<think>...</think>` blocks from history to save context space. Separately, `MessageContentRenderer` extracts `<think>` blocks (including unclosed ones mid-stream) for display, so changes to the reasoning format must update both. `ThinkingBlockTests` covers both sides.
 
 ### File Structure
 
