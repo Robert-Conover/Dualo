@@ -196,6 +196,28 @@ final class ChatFlowUITests: XCTestCase {
         }
     }
 
+    func testSearchFindsEarlierMessagesInAChat() {
+        // The title is the first four words, so "zebracorn" is only findable in the message
+        startChat(with: "Tell me about the zebracorn please")
+        waitForReplyToFinish()
+        app.buttons["Back"].firstMatch.tap()
+
+        let conversations = app.buttons["Conversations"]
+        XCTAssertTrue(conversations.waitForExistence(timeout: 10), "Conversations button not found")
+        conversations.tap()
+        let search = element("conversationSearchField")
+        XCTAssertTrue(search.waitForExistence(timeout: 5), "Search field not found")
+        search.tap()
+        search.typeText("Zebracorn")
+
+        let snippet = element("conversationSearchSnippet")
+        XCTAssertTrue(snippet.waitForExistence(timeout: 5), "No search result with a snippet")
+        XCTAssertTrue(snippet.label.contains("zebracorn"), "Snippet: \(snippet.label)")
+
+        search.typeText("xyz")
+        XCTAssertTrue(text(containing: "No results").waitForExistence(timeout: 5), "No-results message missing")
+    }
+
     func testCloudModelChatOffersImageAttachments() {
         XCTAssertTrue(element("homeAttachButton").waitForExistence(timeout: 10), "Home attach button missing")
         startChat(with: "Hello")

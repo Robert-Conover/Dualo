@@ -19,33 +19,31 @@ struct ConversationsSheetView: View {
     @State private var conversationToRename: Conversation?
     @State private var renameText = ""
     
-    private var filteredConversations: [Conversation] {
-        if searchText.isEmpty {
-            return conversationManager.conversations
-        }
-        return conversationManager.conversations.filter { conversation in
-            conversation.title.localizedCaseInsensitiveContains(searchText) ||
-            conversation.preview.localizedCaseInsensitiveContains(searchText)
-        }
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
     var body: some View {
         NavigationStack {
+            let searchResults = ConversationSearch.search(conversationManager.conversations, for: searchText)
             VStack(spacing: 0) {
                 // Header
                 headerView
-                
+
+                if !conversationManager.conversations.isEmpty {
+                    searchBar
+                }
+
                 if conversationManager.isLoading {
                     loadingView
                 } else if conversationManager.conversations.isEmpty {
                     emptyStateView
+                } else if searchResults.isEmpty {
+                    noResultsView
                 } else {
                     // Conversations list
-                    conversationsList
+                    conversationsList(searchResults)
                 }
-                
-                // Search bar at bottom
-                searchBar
             }
             .background(Color.theme.sheetBackground)
             .navigationBarHidden(true)
@@ -152,13 +150,33 @@ struct ConversationsSheetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    private var noResultsView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 40, weight: .thin))
+                .foregroundStyle(.secondary.opacity(0.6))
+
+            Text("No results for \u{201C}\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
     
     // MARK: - Conversations List
     
-    private var conversationsList: some View {
+    private func conversationsList(_ searchResults: [ConversationSearch.Result]) -> some View {
         List {
             Section {
-                ForEach(filteredConversations) { conversation in
+                ForEach(searchResults) { result in
+                    let conversation = result.conversation
                     Button(action: {
                         HapticFeedback.light()
                         selectedConversation = conversation
@@ -183,6 +201,14 @@ struct ConversationsSheetView: View {
                                     Text("\(conversation.messages.count) messages")
                                         .font(.system(size: 13))
                                         .foregroundStyle(.tertiary)
+                                }
+
+                                if let snippet = result.snippet {
+                                    Text(highlighted(snippet))
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                        .accessibilityIdentifier("conversationSearchSnippet")
                                 }
                             }
                             
@@ -214,7 +240,7 @@ struct ConversationsSheetView: View {
                     }
                 }
             } header: {
-                Text("Recents")
+                Text(isSearching ? "Results" : "Recents")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(nil)
@@ -222,6 +248,18 @@ struct ConversationsSheetView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    /// The snippet with the search term in bold
+    private func highlighted(_ snippet: String) -> AttributedString {
+        var text = AttributedString(snippet)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let match = text.range(of: query, options: ConversationSearch.matchOptions) {
+            text[match].font = .system(size: 14, weight: .semibold)
+            text[match].foregroundColor = .primary
+        }
+        return text
     }
     
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -268,19 +306,34 @@ struct ConversationsSheetView: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
-            
-            TextField("Search", text: $searchText)
+
+            TextField("Search chats", text: $searchText)
                 .font(.body)
                 .tint(.accentColor)
                 .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .accessibilityIdentifier("conversationSearchField")
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .glassEffect(in: .rect(cornerRadius: 12))
+        .padding(.vertical, 11)
+        .glassEffect(in: .capsule)
         .padding(.horizontal, 16)
-        .padding(.vertical, 16)
+        .padding(.bottom, 8)
     }
 }
 
