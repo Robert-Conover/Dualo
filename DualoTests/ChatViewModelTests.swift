@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 import Testing
 @testable import Dualo
 
@@ -13,7 +14,7 @@ import Testing
 
 @MainActor
 private final class FakeAPIService: APIServiceProtocol {
-    private(set) var requests: [(text: String, history: [Message])] = []
+    private(set) var requests: [(text: String, history: [Message], attachments: [MessageAttachment])] = []
     private var continuation: AsyncThrowingStream<String, Error>.Continuation?
 
     func yield(_ chunk: String) { continuation?.yield(chunk) }
@@ -24,7 +25,7 @@ private final class FakeAPIService: APIServiceProtocol {
     }
 
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) -> AsyncThrowingStream<String, Error> {
-        requests.append((message, history))
+        requests.append((message, history, attachments))
         let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
         self.continuation = continuation
         return stream
@@ -202,5 +203,43 @@ struct ChatViewModelTests {
         #expect(viewModel.errorMessage == StringConstants.Errors.configurationRequired)
         #expect(newMessages.isEmpty)
         #expect(api.requests.isEmpty)
+    }
+
+    // MARK: - Image attachments
+
+    private var testImage: ImageAttachment {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        return ImageAttachment(image: image)
+    }
+
+    @Test func cloudModelSendsImages() async {
+        viewModel.pendingAttachments = [testImage]
+        await send { await viewModel.sendMessage("What is this?") }
+
+        #expect(api.requests.last?.attachments.count == 1)
+        #expect(newMessages.first?.attachments.count == 1)
+    }
+
+    @Test func localModelDropsImagesInsteadOfSendingThem() async {
+        viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
+        viewModel.pendingAttachments = [testImage]
+        await send { await viewModel.sendMessage("What is this?") }
+
+        #expect(api.requests.last?.attachments.isEmpty == true)
+        #expect(newMessages.first?.attachments.isEmpty == true)
+        #expect(viewModel.pendingAttachments.isEmpty)
+    }
+
+    @Test func localModelIgnoresImageOnlyMessage() async {
+        viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
+        viewModel.pendingAttachments = [testImage]
+        await viewModel.sendMessage("")
+
+        #expect(api.requests.isEmpty)
+        #expect(newMessages.isEmpty)
+        #expect(viewModel.pendingAttachments.isEmpty)
     }
 }

@@ -92,4 +92,11 @@ final class LocalModelUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(pineappleTexts.count, 1, "Message after stopping never went through")
         XCTAssertFalse(app.alerts.firstMatch.exists, "An error alert appeared")
     }
+
+    func testLocalModelChatHasNoAttachButton() throws {
+        try openChatOnLocalModel()
+
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: element("chatAttachButton"))
+        wait(for: [gone], timeout: 5)
+    }
 }

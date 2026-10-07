@@ -128,17 +128,21 @@ struct ChatInputBar: View {
         HStack(spacing: 12) {
             // Text input container with embedded send button
             HStack(spacing: 8) {
-                // + button for attachments
-                Button(action: {
-                    HapticFeedback.light()
-                    showAttachmentOptions = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.blue)
-                        .frame(width: 24, height: 24)
+                // + button for attachments (hidden for models that can't take images)
+                if currentProvider.supportsImageAttachments {
+                    Button(action: {
+                        HapticFeedback.light()
+                        showAttachmentOptions = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.blue)
+                            .frame(width: 24, height: 24)
+                    }
+                    .disabled(viewModel.isLoading || viewModel.isStreaming)
+                    .accessibilityLabel("Add Attachment")
+                    .accessibilityIdentifier("chatAttachButton")
                 }
-                .disabled(viewModel.isLoading || viewModel.isStreaming)
 
                 TextField("Message", text: $messageText, axis: .vertical)
                     .accessibilityIdentifier("chatComposer")

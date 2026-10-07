@@ -68,6 +68,9 @@ struct SimpleChatView: View {
             .background(Color.theme.chatBackground)
             .onAppear(perform: handleOnAppear)
             .onChange(of: viewModel.isStreaming, handleStreamingChange)
+            .onChange(of: currentProvider) { _, provider in
+                if !provider.supportsImageAttachments { pendingAttachments = [] }
+            }
     }
     
     // MARK: - Lifecycle Event Handlers (extracted to reduce body complexity)
