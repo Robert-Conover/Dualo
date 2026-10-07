@@ -4,6 +4,7 @@
 //
 //  Debug-only hooks for DualoUITests. Launching with `-UITestStubAPI` swaps the
 //  cloud API for StubAPIService so chat flows can run without an API key.
+//  Local models still run for real.
 //
 
 #if DEBUG
@@ -38,6 +39,11 @@ final class StubAPIService: APIServiceProtocol {
     }
 
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) -> AsyncThrowingStream<String, Error> {
+        // Only the cloud API is stubbed; local models run for real
+        if config.provider == .local {
+            return APIService.shared.streamMessage(message, history: history, config: config, attachments: attachments, conversationId: conversationId)
+        }
+
         let shouldFail = message.contains("[fail]") && failedOnce.insert(message).inserted
         let wordDelay: Duration = message.contains("[drip]") ? .milliseconds(400) : .milliseconds(150)
         let firstWordDelay: Duration = message.contains("[slow]") ? .seconds(3) : wordDelay
@@ -70,6 +76,8 @@ final class StubAPIService: APIServiceProtocol {
         provider.availableModels
     }
 
-    func stopStreaming() {}
+    func stopStreaming() {
+        APIService.shared.stopStreaming()
+    }
 }
 #endif

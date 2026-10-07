@@ -83,12 +83,12 @@ class GGUFService: ObservableObject {
     private var llm: LLM?
     private var currentGenerationTask: Task<Void, Never>?
     private var currentGenerationId: UUID?
+    /// The most recent generation, stopped or not. Each new one waits for it to wind down,
+    /// because LLM.swift silently ignores a `respond` call while another is still running.
+    private var lastGenerationTask: Task<Void, Never>?
     private let localModelManager = LocalModelManager.shared
-    
-    /// Store model info for context recreation
-    private var loadedModelPath: URL?
-    private var loadedModelTemplate: Template?
-    private var loadedModelContextSize: Int32 = Int32(AppConstants.LocalModels.maxMobileContextTokens)
+
+    nonisolated private static let systemPrompt = "You are a helpful assistant."
 
     /// Cached regex for stripping thinking blocks (compiled once for performance).
     /// Like `MessageContentRenderer`, an unclosed <think> (reply stopped mid-thought) runs to the end.
@@ -174,7 +174,6 @@ class GGUFService: ObservableObject {
             throw error
         }
         
-        // Get model info for template selection
         let modelInfo = localModelManager.availableModels.first { $0.id == modelId }
         
         // Unload any existing model first
@@ -185,9 +184,6 @@ class GGUFService: ObservableObject {
         
         Logger.inference.info("Loading GGUF model from: \(modelPath.path, privacy: .public)")
         
-        // Determine the template based on model info
-        let template = getTemplate(for: modelInfo)
-        
         // Get the model's context size, capped for mobile memory constraints
         // Full context (32K+) would use too much RAM for the KV cache
         let maxMobileContext = Int32(AppConstants.LocalModels.maxMobileContextTokens)
@@ -197,7 +193,7 @@ class GGUFService: ObservableObject {
         
         // Load the model using LLM.swift with proper context size
         // The "Compiler failed to build request" error occurs when Metal shaders fail to compile
-        guard let loadedLLM = LLM(from: modelPath, template: template, maxTokenCount: contextSize) else {
+        guard let loadedLLM = await Self.makeLLM(from: modelPath, contextSize: contextSize) else {
             isLoading = false
             // Provide more helpful error message
             let errorDetails = """
@@ -214,12 +210,7 @@ class GGUFService: ObservableObject {
         }
         
         llm = loadedLLM
-        
-        // Store model info for context recreation (needed for KV cache clearing)
-        loadedModelPath = modelPath
-        loadedModelTemplate = template
-        loadedModelContextSize = contextSize
-        
+
         Logger.inference.info("GGUF model loaded successfully")
         
         isModelLoaded = true
@@ -232,9 +223,6 @@ class GGUFService: ObservableObject {
         llm = nil
         isModelLoaded = false
         loadedModelId = nil
-        loadedModelPath = nil
-        loadedModelTemplate = nil
-        loadedModelContextSize = Int32(AppConstants.LocalModels.maxMobileContextTokens)
         currentConversationId = nil
         Logger.inference.info("GGUF model unloaded")
     }
@@ -248,12 +236,9 @@ class GGUFService: ObservableObject {
     ///   - conversationId: The ID of the current conversation - used to detect conversation switches
     func streamMessage(_ message: String, history: [Message], conversationId: UUID) -> AsyncThrowingStream<String, Error> {
         // Capture values needed for the detached task BEFORE creating the stream
-        let isLoaded = self.isModelLoaded
-        let modelPath = self.loadedModelPath
-        let template = self.loadedModelTemplate
-        let contextSize = self.loadedModelContextSize
-        let previousConversationId = self.currentConversationId
-        let isNewConversation = previousConversationId != conversationId
+        let llm = self.llm
+        let previousGeneration = self.lastGenerationTask
+        let isNewConversation = self.currentConversationId != conversationId
 
         // Only convert history if we're switching conversations
         let historyForLLM: [Chat]? = isNewConversation ? self.convertToLLMHistory(history) : nil
@@ -262,15 +247,10 @@ class GGUFService: ObservableObject {
         let generationId = UUID()
 
         let task = Task.detached { [weak self] in
-            guard let self = self else {
-                continuation.finish()
-                return
-            }
+            await previousGeneration?.value
 
-            guard isLoaded,
-                  let modelPath = modelPath,
-                  let template = template else {
-                continuation.finish(throwing: GGUFServiceError.modelNotLoaded)
+            guard let self, let llm, !Task.isCancelled else {
+                continuation.finish(throwing: llm == nil ? GGUFServiceError.modelNotLoaded : nil)
                 return
             }
 
@@ -283,75 +263,55 @@ class GGUFService: ObservableObject {
                 self.currentConversationId = conversationId
             }
 
-            // Get or create LLM instance
-            let activeLLM: LLM
-
-            if let existingLLM = await MainActor.run(body: { self.llm }) {
-                if isNewConversation {
-                    // Conversation changed - reset context and load new history
-                    // LLM.swift v2.0.1: reset() clears history and resets KV cache
-                    Logger.inference.debug("Conversation changed, resetting context")
-                    existingLLM.reset()
-
-                    // Load the new conversation's history (if any)
-                    if let history = historyForLLM, !history.isEmpty {
-                        Logger.inference.debug("Loading \(history.count) history turns for new conversation")
-                        existingLLM.history = history
-                    }
-                } else {
-                    // Same conversation - let LLM.swift manage history naturally
-                    // Don't touch history - it already has the previous turns
-                    Logger.inference.debug("Continuing conversation (LLM history: \(existingLLM.history.count) turns)")
-                }
-                activeLLM = existingLLM
+            if isNewConversation {
+                // Conversation changed - clear history and the KV cache, then load this chat's turns
+                Logger.inference.debug("Conversation changed, resetting context")
+                llm.reset()
+                llm.history = historyForLLM ?? []
             } else {
-                // First use - create fresh LLM instance
-                Logger.inference.debug("Creating new LLM instance (context: \(contextSize) tokens)")
-                guard let freshLLM = LLM(from: modelPath, template: template, maxTokenCount: contextSize) else {
-                    continuation.finish(throwing: GGUFServiceError.modelLoadFailed("Failed to load LLM"))
-                    await MainActor.run {
-                        self.isGenerating = false
-                    }
-                    return
-                }
-
-                // Load initial history if provided
-                if let history = historyForLLM, !history.isEmpty {
-                    Logger.inference.debug("Loading \(history.count) initial history turns")
-                    freshLLM.history = history
-                }
-
-                await MainActor.run {
-                    self.llm = freshLLM
-                }
-
-                activeLLM = freshLLM
+                // Same conversation - LLM.swift already holds the previous turns and reuses
+                // the KV cache for them, so only the new message gets evaluated
+                Logger.inference.debug("Continuing conversation (LLM history: \(llm.history.count) turns)")
             }
 
-            // Set up the update callback to stream tokens
-            activeLLM.update = { [weak self] token in
-                if let token = token {
-                    let sanitizedToken = self?.sanitizeText(token) ?? token
-                    continuation.yield(sanitizedToken)
-
-                    Task { @MainActor in
-                        self?.currentTokenCount += 1
-                    }
+            // Stream reasoning and the answer as one string, with reasoning wrapped in
+            // <think> tags so MessageContentRenderer shows it as a thinking block.
+            let output = ThinkingTagStream { text in
+                if case .terminated = continuation.yield(text) {
+                    // The reader is gone (Stop tapped or chat closed), so stop generating
+                    llm.stop()
+                }
+                Task { @MainActor in
+                    self.currentTokenCount += 1
+                }
+            }
+            llm.updateThinking = { delta in
+                if let delta {
+                    output.thinking(Self.sanitizeText(delta))
+                } else {
+                    output.finish()
+                }
+            }
+            llm.update = { delta in
+                if let delta {
+                    output.answer(Self.sanitizeText(delta))
+                } else {
+                    output.finish()
                 }
             }
 
-            // Let LLM.swift handle everything - it will:
-            // 1. Preprocess the message with its internal history
-            // 2. Generate the response
-            // 3. Automatically append this turn to history
-            await activeLLM.respond(to: message)
+            // Renders the prompt with the model's own chat template, generates,
+            // and appends this turn (answer only, no reasoning) to llm.history.
+            // Reasoning is suppressed: LLM.swift otherwise forces it on, and small models
+            // (Qwen3.5 ships with it off) can think for minutes on a phone before answering.
+            await llm.respond(to: message, thinking: .suppressed)
 
-            // Clean up: Strip thinking blocks from history to save context space
-            // Thinking blocks are verbose (~200-400 tokens each) but not needed for context
-            let cleanedHistory = Self.buildCleanedHistory(from: activeLLM.history)
-            if cleanedHistory.count != activeLLM.history.count ||
-               zip(cleanedHistory, activeLLM.history).contains(where: { $0.content != $1.content }) {
-                activeLLM.history = cleanedHistory
+            // Models without an embedded template fall back to ChatML, where <think> blocks
+            // land in the answer. Strip them from history to save context space.
+            let cleanedHistory = Self.buildCleanedHistory(from: llm.history)
+            if cleanedHistory.count != llm.history.count ||
+               zip(cleanedHistory, llm.history).contains(where: { $0.content != $1.content }) {
+                llm.history = cleanedHistory
             }
 
             await MainActor.run {
@@ -364,7 +324,9 @@ class GGUFService: ObservableObject {
                         tokensPerSecond: tokensPerSecond
                     )
                 }
-                self.isGenerating = false
+                if self.currentGenerationId == generationId {
+                    self.isGenerating = false
+                }
             }
 
             continuation.finish()
@@ -373,12 +335,13 @@ class GGUFService: ObservableObject {
         // Synchronous assignments on MainActor (no async hop needed with makeStream)
         self.currentGenerationTask = task
         self.currentGenerationId = generationId
+        self.lastGenerationTask = task
 
         continuation.onTermination = { @Sendable [weak self] _ in
             task.cancel()
             Task { @MainActor in
-                self?.llm?.stop()
                 if self?.currentGenerationId == generationId {
+                    self?.llm?.stop()
                     self?.isGenerating = false
                     self?.currentGenerationTask = nil
                     self?.currentGenerationId = nil
@@ -475,7 +438,7 @@ class GGUFService: ObservableObject {
     
     /// Sanitize text to fix common encoding issues
     /// Handles mojibake from UTF-8 being misinterpreted as Latin-1/Windows-1252
-    nonisolated private func sanitizeText(_ text: String) -> String {
+    nonisolated private static func sanitizeText(_ text: String) -> String {
         var result = text
         
         // Common mojibake patterns for curly/smart quotes when UTF-8 is read as Latin-1
@@ -517,33 +480,16 @@ class GGUFService: ObservableObject {
         return result
     }
     
-    /// Get the appropriate template for the model
-    private func getTemplate(for model: LocalModel?) -> Template {
-        let systemPrompt = "You are a helpful assistant."
-        
-        guard let model = model else {
-            return .chatML(systemPrompt)
+    /// Create an LLM that formats chats with the template embedded in the GGUF file,
+    /// falling back to ChatML for files that don't include one.
+    nonisolated private static func makeLLM(from path: URL, contextSize: Int32) async -> LLM? {
+        guard let llm = LLM(from: path, maxTokenCount: contextSize) else { return nil }
+        llm.systemPrompt = systemPrompt
+        if await llm.core.getChatTemplateHint() == nil {
+            Logger.inference.info("Model has no embedded chat template, using ChatML")
+            llm.template = .chatML(systemPrompt)
         }
-        
-        // Select template based on model family
-        switch model.templateType {
-        case .chatML:
-            return .chatML(systemPrompt)
-        case .gemma:
-            // Custom Gemma 3 template with proper stop sequence
-            // Gemma 3 uses: <start_of_turn>user\n...<end_of_turn>\n<start_of_turn>model\n...<end_of_turn>
-            return Template(
-                system: ("", ""),  // Gemma 3 doesn't use a separate system turn
-                user: ("<start_of_turn>user\n", "<end_of_turn>\n"),
-                bot: ("<start_of_turn>model\n", "<end_of_turn>"),
-                stopSequence: "<end_of_turn>",
-                systemPrompt: systemPrompt
-            )
-        case .llama:
-            return .alpaca(systemPrompt)
-        case .qwen:
-            return .chatML(systemPrompt)
-        }
+        return llm
     }
     
     // MARK: - GGUF File Validation
@@ -580,10 +526,10 @@ class GGUFService: ObservableObject {
         let version = versionData.withUnsafeBytes { $0.load(as: UInt32.self) }
         Logger.inference.debug("GGUF file version: \(version)")
         
-        // LLM.swift v2.x supports GGUF v3 format (recommended)
+        // llama.cpp reads GGUF v3 (current); older versions may not load
         // Older versions (v1, v2) or future versions may not be compatible
         if version < 2 || version > 3 {
-            Logger.inference.warning("GGUF version \(version) may not be fully supported. LLM.swift works best with GGUF v3.")
+            Logger.inference.warning("GGUF version \(version) may not be fully supported. Current llama.cpp expects GGUF v3.")
         }
     }
 }
