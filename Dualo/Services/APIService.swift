@@ -130,7 +130,8 @@ class APIService: APIServiceProtocol {
         let messages = openAIFormatter.formatMessages(
             currentMessage: message,
             history: history,
-            attachments: attachments
+            attachments: attachments,
+            instructions: CustomInstructions.current
         )
 
         var requestBody: [String: Any] = [
@@ -221,7 +222,8 @@ class APIService: APIServiceProtocol {
         let messages = openAIFormatter.formatMessages(
             currentMessage: message,
             history: history,
-            attachments: attachments
+            attachments: attachments,
+            instructions: CustomInstructions.current
         )
 
         var requestBody: [String: Any] = [

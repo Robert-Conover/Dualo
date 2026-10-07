@@ -21,7 +21,8 @@ struct SettingsView: View {
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var apiKeyValidationError: String?
-    
+    @AppStorage(CustomInstructions.key) private var customInstructions = ""
+
     // App version from bundle
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -32,6 +33,23 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                // MARK: - Personalization Section
+                Section {
+                    NavigationLink(destination: CustomInstructionsView()) {
+                        SettingsRow(
+                            icon: "text.quote",
+                            title: "Custom Instructions",
+                            color: .orange,
+                            subtitle: customInstructions.isEmpty ? "Off" : customInstructions,
+                            showChevron: false
+                        )
+                        .lineLimit(1)
+                    }
+                    .accessibilityIdentifier("customInstructionsRow")
+                } header: {
+                    Text("Personalization")
+                }
+
                 // MARK: - On-Device Models Section
                 onDeviceSection
                 

@@ -83,6 +83,17 @@ struct GGUFServiceIntegrationTests {
         #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
 
+    @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
+        let chat = UUID()
+        _ = try await reply(to: "Say hi.", in: chat)
+
+        UserDefaults.standard.set("Your name is Zorblax.", forKey: CustomInstructions.key)
+        defer { UserDefaults.standard.removeObject(forKey: CustomInstructions.key) }
+        let reply = try await reply(to: "What is your name? Answer in one word.", in: chat)
+
+        #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
     @Test func stoppingMidReplyFreesTheModelForTheNextMessage() async throws {
         var chunks = 0
         for try await _ in service.streamMessage("Write a very long story about a dragon.", history: [], conversationId: UUID()) {

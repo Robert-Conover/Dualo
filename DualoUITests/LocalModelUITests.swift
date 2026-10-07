@@ -93,6 +93,23 @@ final class LocalModelUITests: XCTestCase {
         XCTAssertFalse(app.alerts.firstMatch.exists, "An error alert appeared")
     }
 
+    func testLocalModelFollowsCustomInstructions() throws {
+        // Launch arguments land in UserDefaults for this launch only, so nothing is saved
+        app.terminate()
+        app.launchArguments += ["-\(customInstructionsKey)", "Your name is Zorblax."]
+        app.launch()
+        try openChatOnLocalModel()
+
+        send("What is your name? Answer in one word.")
+        waitForLabel("Send", on: sendButton, timeout: 90)
+
+        let zorblax = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Zorblax'"))
+        XCTAssertGreaterThanOrEqual(zorblax.count, 1, "Reply didn't use the name from the instructions")
+    }
+
+    /// Matches `CustomInstructions.key` in the app
+    private let customInstructionsKey = "CustomInstructions"
+
     func testLocalModelChatHasNoAttachButton() throws {
         try openChatOnLocalModel()
 
