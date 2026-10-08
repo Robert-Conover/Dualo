@@ -283,8 +283,22 @@ final class ChatFlowUITests: XCTestCase {
 
     func testCloudModelChatOffersImageAttachments() {
         XCTAssertTrue(element("homeAttachButton").waitForExistence(timeout: 10), "Home attach button missing")
+        assertAttachmentChoicesOpenNear(element("homeAttachButton"))
         startChat(with: "Hello")
         waitForReplyToFinish()
         XCTAssertTrue(element("chatAttachButton").exists, "Chat attach button missing")
+        assertAttachmentChoicesOpenNear(element("chatAttachButton"))
+    }
+
+    /// The choices used to open in a popover at the top of the screen, far from the button
+    private func assertAttachmentChoicesOpenNear(_ button: XCUIElement) {
+        button.tap()
+        let library = app.buttons["Photo Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5), "Attachment choices didn't open")
+        XCTAssertTrue(app.buttons["Take Photo"].exists)
+        XCTAssertLessThan(abs(library.frame.midY - button.frame.midY), 250,
+                          "Choices opened at y \(library.frame.midY), far from the button at y \(button.frame.midY)")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap() // Close the menu
+        XCTAssertTrue(library.waitForNonExistence(timeout: 5))
     }
 }

@@ -17,7 +17,8 @@ struct ChatInputBar: View {
 
     @Binding var messageText: String
     @Binding var pendingAttachments: [ImageAttachment]
-    @Binding var showAttachmentOptions: Bool
+    @Binding var showPhotoPicker: Bool
+    @Binding var showCamera: Bool
     @Binding var showGenerationStats: Bool
     @FocusState.Binding var isInputFocused: Bool
 
@@ -148,18 +149,9 @@ struct ChatInputBar: View {
             HStack(spacing: 8) {
                 // + button for attachments (hidden for models that can't take images)
                 if currentProvider.supportsImageAttachments {
-                    Button(action: {
-                        HapticFeedback.light()
-                        showAttachmentOptions = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.blue)
-                            .frame(minWidth: 24, minHeight: 24)
-                    }
-                    .disabled(viewModel.isLoading || viewModel.isStreaming)
-                    .accessibilityLabel("Add Attachment")
-                    .accessibilityIdentifier("chatAttachButton")
+                    AttachmentMenu(showPhotoPicker: $showPhotoPicker, showCamera: $showCamera)
+                        .disabled(viewModel.isLoading || viewModel.isStreaming)
+                        .accessibilityIdentifier("chatAttachButton")
                 }
 
                 TextField("Message", text: $messageText, axis: .vertical)

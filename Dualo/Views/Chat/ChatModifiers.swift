@@ -59,7 +59,6 @@ struct ChatAlertsModifier: ViewModifier {
 // MARK: - Attachment Pickers
 
 struct AttachmentPickerModifier: ViewModifier {
-    @Binding var showAttachmentOptions: Bool
     @Binding var showPhotoPicker: Bool
     @Binding var showCamera: Bool
     @Binding var pendingAttachments: [ImageAttachment]
@@ -67,15 +66,6 @@ struct AttachmentPickerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog("Add Attachment", isPresented: $showAttachmentOptions, titleVisibility: .visible) {
-                Button("Photo Library") {
-                    showPhotoPicker = true
-                }
-                Button("Take Photo") {
-                    showCamera = true
-                }
-                Button("Cancel", role: .cancel) {}
-            }
             .sheet(isPresented: $showPhotoPicker) {
                 PhotoPicker(selectedImages: $pendingAttachments, selectionLimit: 4) {
                     showPhotoPicker = false
