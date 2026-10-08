@@ -13,9 +13,9 @@ struct ChatEmptyStateView: View {
     let onSelectPrompt: (String) -> Void
 
     private let quickPrompts = [
-        ("💡", "Explain a concept to me"),
-        ("✍️", "Help me write something"),
-        ("🐛", "Debug this code")
+        ("lightbulb", "Explain a concept to me"),
+        ("pencil.line", "Help me write something"),
+        ("ladybug", "Debug this code")
     ]
 
     var body: some View {
@@ -73,14 +73,16 @@ struct ChatEmptyStateView: View {
 
             // Quick prompt buttons
             VStack(spacing: 10) {
-                ForEach(quickPrompts, id: \.1) { emoji, text in
+                ForEach(quickPrompts, id: \.1) { symbol, text in
                     Button(action: {
                         HapticFeedback.light()
                         onSelectPrompt(text)
                     }) {
                         HStack(spacing: 10) {
-                            Text(emoji)
+                            Image(systemName: symbol)
                                 .font(.body)
+                                .foregroundStyle(.tint)
+                                .frame(minWidth: 24)
                             Text(text)
                                 .font(.subheadline.weight(.medium))
                             Spacer()

@@ -67,67 +67,6 @@ struct SettingsRow: View {
     }
 }
 
-// MARK: - Gradient Row Variant (matches toggle styling)
-
-struct SettingsRowGradient: View {
-    let icon: String
-    let title: String
-    let gradientColors: [Color]
-    var subtitle: String? = nil
-    var showChevron: Bool = true
-    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 28
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Icon with gradient background
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(
-                        LinearGradient(
-                            colors: gradientColors.map { $0.opacity(0.2) },
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: iconSize, height: iconSize)
-                
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: gradientColors,
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            
-            // Title and optional subtitle
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            // Optional chevron for navigation rows
-            if showChevron {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .contentShape(Rectangle())
-    }
-}
-
 // MARK: - Static Row Variant (no chevron, for info display)
 
 struct SettingsInfoRow: View {
@@ -158,18 +97,7 @@ struct SettingsInfoRow: View {
 #Preview {
     List {
         Section("App") {
-            SettingsRowGradient(
-                icon: "iphone",
-                title: "Manage models",
-                gradientColors: [.green, .mint],
-                subtitle: "On-device models"
-            )
-            SettingsRowGradient(
-                icon: "cloud.fill",
-                title: "Manage models",
-                gradientColors: [.blue, .purple],
-                subtitle: "Cloud API providers"
-            )
+            SettingsRow(icon: "iphone", title: "Local Models", color: .green, subtitle: "1 model downloaded")
             SettingsRow(icon: "person.circle", title: "Personalization", color: .purple, subtitle: "Customize your experience")
         }
         

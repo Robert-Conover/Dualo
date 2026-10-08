@@ -167,14 +167,14 @@ struct ChatInputBar: View {
                         send()
                     }
                 }) {
-                    Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
+                    Image(systemName: viewModel.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.title2.weight(.medium))
                         .foregroundStyle(
-                            viewModel.isStreaming ? .red :
+                            viewModel.isStreaming ? Color.primary :
                             canSendMessage ? .blue : .secondary
                         )
                         .scaleEffect(canSendMessage || viewModel.isStreaming ? 1.0 : 0.8)
-                        .rotationEffect(.degrees(viewModel.isStreaming ? 90 : 0))
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .disabled(!canSendMessage && !viewModel.isStreaming)
                 .accessibilityLabel(viewModel.isStreaming ? "Stop" : "Send")
