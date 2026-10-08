@@ -15,15 +15,23 @@ struct MessageBubbleView: View {
     var streamingContent: String?
     /// Callback when user taps retry on a failed message
     var onRetry: (() -> Void)?
+    /// Set on the last user message, to edit and resend it
+    var onEdit: (() -> Void)?
+    /// Set on the last reply, to replace it with a fresh one
+    var onRegenerate: (() -> Void)?
     
     @State private var showTimestamp = false
+    @ScaledMetric(relativeTo: .subheadline) private var replyActionSize: CGFloat = 36
     
-    init(message: Message, isStreaming: Bool = false, provider: APIProvider? = nil, streamingContent: String? = nil, onRetry: (() -> Void)? = nil) {
+    init(message: Message, isStreaming: Bool = false, provider: APIProvider? = nil, streamingContent: String? = nil,
+         onRetry: (() -> Void)? = nil, onEdit: (() -> Void)? = nil, onRegenerate: (() -> Void)? = nil) {
         self.message = message
         self.isStreaming = isStreaming
         self.provider = provider
         self.streamingContent = streamingContent
         self.onRetry = onRetry
+        self.onEdit = onEdit
+        self.onRegenerate = onRegenerate
     }
     
     /// The content to display - uses live streaming buffer when available, otherwise message content
@@ -149,10 +157,28 @@ struct MessageBubbleView: View {
                             // After streaming: use rich rendering with Markdown/code block parsing
                             MessageContentView(content: displayContent, isUser: false)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if let onRegenerate {
+                                replyActions(regenerate: onRegenerate)
+                            }
                         }
                     }
                 }
                 .contextMenu {
+                    if let onEdit {
+                        Button("Edit", systemImage: "pencil") {
+                            HapticFeedback.light()
+                            onEdit()
+                        }
+                    }
+
+                    if let onRegenerate {
+                        Button("Regenerate", systemImage: "arrow.clockwise") {
+                            HapticFeedback.light()
+                            onRegenerate()
+                        }
+                    }
+
                     Button(action: {
                         // Use displayContent to copy what the user actually sees (including streaming snapshot)
                         UIPasteboard.general.string = displayContent
@@ -189,6 +215,37 @@ struct MessageBubbleView: View {
             
             HapticFeedback.light()
         }
+    }
+
+    // MARK: - Reply Actions
+
+    /// Copy and Regenerate under the last reply, so they're findable without a long press
+    private func replyActions(regenerate: @escaping () -> Void) -> some View {
+        HStack(spacing: 0) {
+            replyAction("Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = displayContent
+            }
+
+            replyAction("Regenerate", systemImage: "arrow.clockwise", action: regenerate)
+                .accessibilityIdentifier("regenerateButton")
+        }
+        // The icons sit inside larger tap targets; line the first one up with the text
+        .padding(.leading, -(replyActionSize - 16) / 2)
+    }
+
+    private func replyAction(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button {
+            HapticFeedback.light()
+            action()
+        } label: {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(minWidth: replyActionSize, minHeight: replyActionSize)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Attachments View

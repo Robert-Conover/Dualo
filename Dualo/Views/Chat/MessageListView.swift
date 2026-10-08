@@ -24,6 +24,8 @@ struct MessageListView: View {
     @Binding var showScrollToBottom: Bool
     @Binding var scrollToBottomAction: (() -> Void)?
     @FocusState.Binding var isInputFocused: Bool
+    /// Called with the last user message when it's picked for editing
+    let onEditMessage: (UUID) -> Void
 
     @State private var scrollViewHeight: CGFloat = 0
     @State private var lastScrollUpdate: Date = .distantPast
@@ -43,6 +45,14 @@ struct MessageListView: View {
                             onRetry: message.isFailed ? {
                                 Task {
                                     await viewModel.retryMessage(message.id)
+                                }
+                            } : nil,
+                            onEdit: message.id == viewModel.editableMessageId ? {
+                                onEditMessage(message.id)
+                            } : nil,
+                            onRegenerate: message.id == viewModel.regenerableMessageId ? {
+                                Task {
+                                    await viewModel.regenerateReply(message.id)
                                 }
                             } : nil
                         )

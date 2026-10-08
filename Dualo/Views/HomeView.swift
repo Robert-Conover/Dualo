@@ -20,7 +20,6 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var selectedConversation: Conversation?
     @State private var pendingAttachments: [ImageAttachment] = []
-    @State private var showAttachmentOptions = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var capturedImage: ImageAttachment?
@@ -59,13 +58,10 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             welcomeContent
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, like the chat composer, so it rides on top of the keyboard as it moves
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 inputBar
-                    .keyboardResponsive()
             }
-            // Deterministic keyboard handling: ignore SwiftUI’s keyboard safe area and drive the composer
-            // position ourselves via `keyboardResponsive()`.
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .background {
                 // The chat background with a still glow of the brand colors at the top; both
                 // follow light and dark mode
@@ -120,15 +116,6 @@ struct HomeView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(modelLoadErrorMessage)
-            }
-            .confirmationDialog("Add Attachment", isPresented: $showAttachmentOptions, titleVisibility: .visible) {
-                Button("Photo Library") {
-                    showPhotoPicker = true
-                }
-                Button("Take Photo") {
-                    showCamera = true
-                }
-                Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showPhotoPicker) {
                 PhotoPicker(selectedImages: $pendingAttachments, selectionLimit: 4) {
@@ -340,17 +327,8 @@ struct HomeView: View {
                 HStack(spacing: 8) {
                     // + button for attachments (hidden for models that can't take images)
                     if supportsImageAttachments {
-                        Button(action: {
-                            HapticFeedback.light()
-                            showAttachmentOptions = true
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.callout.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .frame(minWidth: 24, minHeight: 24)
-                        }
-                        .accessibilityLabel("Add Attachment")
-                        .accessibilityIdentifier("homeAttachButton")
+                        AttachmentMenu(showPhotoPicker: $showPhotoPicker, showCamera: $showCamera, color: .secondary)
+                            .accessibilityIdentifier("homeAttachButton")
                     }
                     
                     TextField("Ask anything", text: $messageText, axis: .vertical)

@@ -31,7 +31,6 @@ struct SimpleChatView: View {
     @State private var exportErrorMessage = ""
 
     // Image picker state
-    @State private var showAttachmentOptions = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
     @State private var pendingAttachments: [ImageAttachment] = []
@@ -59,7 +58,6 @@ struct SimpleChatView: View {
                 renameChat: renameChat
             ))
             .modifier(AttachmentPickerModifier(
-                showAttachmentOptions: $showAttachmentOptions,
                 showPhotoPicker: $showPhotoPicker,
                 showCamera: $showCamera,
                 pendingAttachments: $pendingAttachments,
@@ -127,8 +125,15 @@ struct SimpleChatView: View {
             currentProvider: currentProvider,
             showScrollToBottom: $showScrollToBottom,
             scrollToBottomAction: $performScrollToBottom,
-            isInputFocused: $isInputFocused
+            isInputFocused: $isInputFocused,
+            onEditMessage: beginEditing
         )
+    }
+
+    private func beginEditing(_ messageId: UUID) {
+        guard let text = viewModel.beginEditing(messageId) else { return }
+        messageText = text
+        isInputFocused = true
     }
 
     private func scrollToBottom() {
@@ -145,7 +150,8 @@ struct SimpleChatView: View {
             contextTracker: contextTracker,
             messageText: $messageText,
             pendingAttachments: $pendingAttachments,
-            showAttachmentOptions: $showAttachmentOptions,
+            showPhotoPicker: $showPhotoPicker,
+            showCamera: $showCamera,
             showGenerationStats: $showGenerationStats,
             isInputFocused: $isInputFocused,
             currentProvider: currentProvider,

@@ -19,6 +19,8 @@ class ChatViewModel: ObservableObject {
     @Published var apiConfiguration: APIConfiguration?
     @Published var streamingMessageContent = ""
     @Published var pendingAttachments: [ImageAttachment] = []
+    /// The user message being edited in the composer; sending replaces it and its reply
+    @Published private(set) var editingMessageId: UUID?
 
     // MARK: - Dependencies (injected for testability)
     private let apiService: APIServiceProtocol
@@ -235,13 +237,26 @@ class ChatViewModel: ObservableObject {
         guard let config = sendableConfiguration(), currentConversationId != nil else { return }
         
         // Convert pending UI attachments to message attachments (dropped if the model can't take images)
-        let attachments = config.provider.supportsImageAttachments
+        var attachments = config.provider.supportsImageAttachments
             ? pendingAttachments.compactMap { $0.toMessageAttachment() }
             : []
         pendingAttachments = []
-        guard !text.isEmpty || !attachments.isEmpty else { return }
 
-        let history = messages
+        // An edited message keeps the original's images and replaces it and its reply
+        var history = messages
+        let editedIndex = editingMessageId.flatMap { id in messages.firstIndex(where: { $0.id == id }) }
+        editingMessageId = nil
+        if let editedIndex {
+            if config.provider.supportsImageAttachments {
+                attachments = messages[editedIndex].attachments + attachments
+            }
+            history = Array(messages[..<editedIndex])
+        }
+        guard !text.isEmpty || !attachments.isEmpty else { return }
+        if let editedIndex {
+            removeMessages(from: editedIndex, config: config)
+        }
+
         let userMessage = Message(role: Message.Role.user, content: text, attachments: attachments, sendStatus: .sending)
         addMessageToConversation(userMessage)
         
@@ -264,6 +279,61 @@ class ChatViewModel: ObservableObject {
         startStreaming(message.content, history: history, attachments: message.attachments, userMessageId: messageId, config: config)
     }
     
+    // MARK: - Editing and Regenerating
+
+    /// The last user message, which can be edited and resent while nothing streams.
+    /// Earlier ones can't, since resending them would drop the turns after them.
+    var editableMessageId: UUID? {
+        guard !isStreaming else { return nil }
+        return messages.last(where: { $0.role == Message.Role.user })?.id
+    }
+
+    /// The last reply, which can be regenerated while nothing streams
+    var regenerableMessageId: UUID? {
+        guard !isStreaming, let last = messages.last, last.role == Message.Role.assistant,
+              messages.contains(where: { $0.role == Message.Role.user }) else { return nil }
+        return last.id
+    }
+
+    /// Starts editing a message, returning its text for the composer.
+    func beginEditing(_ messageId: UUID) -> String? {
+        guard messageId == editableMessageId,
+              let message = messages.first(where: { $0.id == messageId }) else { return nil }
+        editingMessageId = messageId
+        return message.content
+    }
+
+    func cancelEditing() {
+        editingMessageId = nil
+    }
+
+    /// Replaces the last reply with a fresh one, from whichever model the chat uses now.
+    func regenerateReply(_ messageId: UUID) async {
+        guard messageId == regenerableMessageId,
+              let userIndex = messages.lastIndex(where: { $0.role == Message.Role.user }),
+              let config = sendableConfiguration() else {
+            return
+        }
+
+        let userMessage = messages[userIndex]
+        let history = Array(messages[..<userIndex])
+        let attachments = config.provider.supportsImageAttachments ? userMessage.attachments : []
+        removeMessages(from: userIndex + 1, config: config)
+        updateMessageStatus(userMessage.id, status: .sending)
+
+        startStreaming(userMessage.content, history: history, attachments: attachments, userMessageId: userMessage.id, config: config)
+    }
+
+    /// Removes the message at `index` and everything after it. A local model still holds
+    /// those turns, so it reloads the chat's history with the next message.
+    private func removeMessages(from index: Int, config: APIConfiguration) {
+        updateCurrentConversation { $0.removeMessages(from: index) }
+        contextTracker.updateFromMessages(messages)
+        if config.provider == .local {
+            GGUFService.shared.reloadHistoryOnNextMessage()
+        }
+    }
+
     /// The current configuration if it can send (local, or cloud with a key); otherwise shows the setup error.
     private func sendableConfiguration() -> APIConfiguration? {
         guard let config = apiConfiguration,

@@ -2,7 +2,7 @@
 //  ChatViewModelTests.swift
 //  DualoTests
 //
-//  Drives ChatViewModel's send/stream/stop/retry flow against fake services.
+//  Drives ChatViewModel's send/stream/stop/retry/edit/regenerate flow against fake services.
 //
 
 import Foundation
@@ -205,6 +205,81 @@ struct ChatViewModelTests {
         #expect(api.requests.isEmpty)
     }
 
+    // MARK: - Editing and regenerating
+
+    /// Sends `text` and streams `reply` back to completion.
+    private func exchange(_ text: String, reply: String) async {
+        await send { await viewModel.sendMessage(text) }
+        api.yield(reply)
+        api.finish()
+        await waitUntil { !viewModel.isStreaming }
+    }
+
+    @Test func editingResendsTheLastMessageInPlaceOfTheOriginal() async throws {
+        await exchange("Hi", reply: "Hello")
+        let original = try #require(newMessages.first)
+
+        #expect(viewModel.beginEditing(original.id) == "Hi")
+        #expect(viewModel.editingMessageId == original.id)
+        await exchange("Hey", reply: "Hello again")
+
+        #expect(api.requests.last?.text == "Hey")
+        #expect(api.requests.last?.history.map(\.content) == ["Earlier question", "Earlier answer"])
+        #expect(newMessages.map(\.content) == ["Hey", "Hello again"])
+        #expect(newMessages.first?.sendStatus == .sent)
+        #expect(viewModel.editingMessageId == nil)
+    }
+
+    @Test func onlyTheLastUserMessageCanBeEdited() async {
+        await exchange("Hi", reply: "Hello")
+
+        #expect(viewModel.beginEditing(viewModel.messages[0].id) == nil)
+        #expect(viewModel.editingMessageId == nil)
+    }
+
+    @Test func cancelledEditSendsANewMessage() async throws {
+        await exchange("Hi", reply: "Hello")
+        _ = viewModel.beginEditing(try #require(newMessages.first?.id))
+        viewModel.cancelEditing()
+        await exchange("Hey", reply: "Hello again")
+
+        #expect(newMessages.map(\.content) == ["Hi", "Hello", "Hey", "Hello again"])
+    }
+
+    @Test func regeneratingReplacesTheLastReply() async throws {
+        let replyId = try #require(viewModel.regenerableMessageId)
+        #expect(replyId == viewModel.messages[1].id)
+
+        await send { await viewModel.regenerateReply(replyId) }
+        api.yield("A fresh answer")
+        api.finish()
+        await waitUntil { !viewModel.isStreaming }
+
+        #expect(api.requests.last?.text == "Earlier question")
+        #expect(api.requests.last?.history.isEmpty == true)
+        #expect(viewModel.messages.map(\.content) == ["Earlier question", "A fresh answer"])
+        #expect(viewModel.messages.first?.sendStatus == .sent)
+        #expect(tracker.lastMessages.last?.content == "A fresh answer")
+    }
+
+    @Test func failedRegenerationCanBeRetried() async throws {
+        let replyId = try #require(viewModel.regenerableMessageId)
+        await send { await viewModel.regenerateReply(replyId) }
+        api.finish(throwing: NetworkError.networkUnavailable)
+        await waitUntil { !viewModel.isStreaming }
+
+        #expect(viewModel.messages.map(\.content) == ["Earlier question"])
+        #expect(viewModel.messages.first?.sendStatus == .failed)
+    }
+
+    @Test func nothingCanBeEditedOrRegeneratedWhileAReplyStreams() async {
+        await send { await viewModel.sendMessage("Hi") }
+
+        #expect(viewModel.editableMessageId == nil)
+        #expect(viewModel.regenerableMessageId == nil)
+        #expect(viewModel.beginEditing(newMessages[0].id) == nil)
+    }
+
     // MARK: - Image attachments
 
     private var testImage: ImageAttachment {
@@ -233,6 +308,17 @@ struct ChatViewModelTests {
         #expect(viewModel.pendingAttachments.isEmpty)
     }
 
+    @Test func editedMessageKeepsItsImages() async throws {
+        viewModel.pendingAttachments = [testImage]
+        await exchange("What is this?", reply: "A red square")
+        _ = viewModel.beginEditing(try #require(newMessages.first?.id))
+        await exchange("What colour is this?", reply: "Red")
+
+        #expect(api.requests.last?.attachments.count == 1)
+        #expect(newMessages.map(\.content) == ["What colour is this?", "Red"])
+        #expect(newMessages.first?.attachments.count == 1)
+    }
+
     @Test func localModelIgnoresImageOnlyMessage() async {
         viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
         viewModel.pendingAttachments = [testImage]
@@ -241,5 +327,42 @@ struct ChatViewModelTests {
         #expect(api.requests.isEmpty)
         #expect(newMessages.isEmpty)
         #expect(viewModel.pendingAttachments.isEmpty)
+    }
+}
+
+// MARK: - Conversation titles
+
+struct ConversationTruncationTests {
+    @Test func removingTheFirstMessageLetsTheNextOneNameTheChat() {
+        var conversation = Conversation(provider: .openai, model: "gpt-6.1-sol")
+        conversation.addMessage(Message(role: Message.Role.user, content: "Plan a trip"))
+        conversation.addMessage(Message(role: Message.Role.assistant, content: "Sure"))
+
+        conversation.removeMessages(from: 0)
+        conversation.addMessage(Message(role: Message.Role.user, content: "Fix my code"))
+
+        #expect(conversation.title == "Fix my code")
+        #expect(conversation.messages.map(\.content) == ["Fix my code"])
+    }
+
+    @Test func aRenamedChatKeepsItsTitle() {
+        var conversation = Conversation(provider: .openai, model: "gpt-6.1-sol")
+        conversation.addMessage(Message(role: Message.Role.user, content: "Plan a trip"))
+        conversation.title = "Japan"
+
+        conversation.removeMessages(from: 0)
+
+        #expect(conversation.title == "Japan")
+    }
+
+    @Test func removingLaterMessagesKeepsTheTitle() {
+        var conversation = Conversation(provider: .openai, model: "gpt-6.1-sol")
+        conversation.addMessage(Message(role: Message.Role.user, content: "Plan a trip"))
+        conversation.addMessage(Message(role: Message.Role.assistant, content: "Sure"))
+
+        conversation.removeMessages(from: 1)
+
+        #expect(conversation.title == "Plan a trip")
+        #expect(conversation.messages.map(\.content) == ["Plan a trip"])
     }
 }

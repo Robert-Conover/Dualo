@@ -36,6 +36,11 @@ struct GGUFServiceIntegrationTests {
 
     init() async throws {
         try await TestModel.load()
+        // Instructions left in the app's settings (say, by an interrupted UI test) change
+        // every reply. They're cleared here and set only by the test that needs them.
+        UserDefaults.standard.removeObject(forKey: CustomInstructions.key)
+        // Sampled replies vary from run to run; the most likely reply doesn't
+        service.useGreedySampling()
     }
 
     /// The reply with any <think> block removed, as it would be stored in history.
@@ -83,6 +88,17 @@ struct GGUFServiceIntegrationTests {
         #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
 
+    @Test func reloadingHistoryForgetsTurnsTheAppRemoved() async throws {
+        let chat = UUID()
+        _ = try await reply(to: "My name is Zorblax. Just say OK.", in: chat)
+
+        // The app dropped that exchange (an edited message or regenerated reply)
+        service.reloadHistoryOnNextMessage()
+        let reply = try await reply(to: "What is my name? Answer in one word.", history: [], in: chat)
+
+        #expect(!answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
     @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
         let chat = UUID()
         _ = try await reply(to: "Say hi.", in: chat)
@@ -105,8 +121,8 @@ struct GGUFServiceIntegrationTests {
         // Each reply waits for the previous one to wind down, so this only comes back
         // quickly if the story really stopped (finishing it takes minutes here)
         let start = Date()
-        let reply = try await reply(to: "Say the word banana.", in: UUID())
-        #expect(answer(reply).lowercased().contains("banana"), "Reply: \(reply)")
+        let reply = try await reply(to: "What is 2+2? Reply with just the number.", in: UUID())
+        #expect(answer(reply).contains("4"), "Reply: \(reply)")
         #expect(Date().timeIntervalSince(start) < 30, "The stopped story seems to have kept generating")
         #expect(!service.isGenerating)
     }

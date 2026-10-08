@@ -17,7 +17,8 @@ struct ChatInputBar: View {
 
     @Binding var messageText: String
     @Binding var pendingAttachments: [ImageAttachment]
-    @Binding var showAttachmentOptions: Bool
+    @Binding var showPhotoPicker: Bool
+    @Binding var showCamera: Bool
     @Binding var showGenerationStats: Bool
     @FocusState.Binding var isInputFocused: Bool
 
@@ -41,6 +42,10 @@ struct ChatInputBar: View {
                 contextUsageSection
             }
 
+            if viewModel.editingMessageId != nil {
+                editingSection
+            }
+
             // Pending attachments preview
             if !pendingAttachments.isEmpty {
                 PendingAttachmentPreview(attachments: pendingAttachments) { attachment in
@@ -53,6 +58,7 @@ struct ChatInputBar: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.editingMessageId)
     }
 
     // MARK: - Subviews
@@ -109,6 +115,28 @@ struct ChatInputBar: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    private var editingSection: some View {
+        HStack(spacing: 10) {
+            Label("Editing message", systemImage: "pencil")
+                .font(.footnote.weight(.medium))
+
+            Button("Cancel Editing", systemImage: "xmark") {
+                HapticFeedback.light()
+                viewModel.cancelEditing()
+                messageText = ""
+            }
+            .labelStyle(.iconOnly)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("cancelEditingButton")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(in: .capsule)
+        .padding(.top, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     private var contextUsageSection: some View {
         ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .full)
             .padding(.top, 8)
@@ -121,18 +149,9 @@ struct ChatInputBar: View {
             HStack(spacing: 8) {
                 // + button for attachments (hidden for models that can't take images)
                 if currentProvider.supportsImageAttachments {
-                    Button(action: {
-                        HapticFeedback.light()
-                        showAttachmentOptions = true
-                    }) {
-                        Image(systemName: "plus")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.blue)
-                            .frame(minWidth: 24, minHeight: 24)
-                    }
-                    .disabled(viewModel.isLoading || viewModel.isStreaming)
-                    .accessibilityLabel("Add Attachment")
-                    .accessibilityIdentifier("chatAttachButton")
+                    AttachmentMenu(showPhotoPicker: $showPhotoPicker, showCamera: $showCamera)
+                        .disabled(viewModel.isLoading || viewModel.isStreaming)
+                        .accessibilityIdentifier("chatAttachButton")
                 }
 
                 TextField("Message", text: $messageText, axis: .vertical)
