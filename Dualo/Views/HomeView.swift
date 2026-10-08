@@ -28,6 +28,7 @@ struct HomeView: View {
     @State private var modelLoadErrorMessage = ""
     
     @FocusState private var isInputFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     // MARK: - Prompt Suggestions
     private let promptSuggestions = [
@@ -234,14 +235,14 @@ struct HomeView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: currentProviderIcon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.medium))
                 
                 Text(currentModelName)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 6)
@@ -258,11 +259,13 @@ struct HomeView: View {
             VStack(spacing: 16) {
                 VStack(spacing: 8) {
                     Text("Welcome to Dualo")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
                         .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                     
                     Text("Cloud & local AI, unified")
-                        .font(.system(size: 17, weight: .regular))
+                        .font(.body)
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 
@@ -310,7 +313,8 @@ struct HomeView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.white.opacity(0.5))
             
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            // One column at accessibility text sizes, so the suggestions aren't cut off
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 10) {
                 ForEach(promptSuggestions, id: \.1) { emoji, text in
                     Button(action: {
                         HapticFeedback.light()
@@ -319,7 +323,7 @@ struct HomeView: View {
                     }) {
                         HStack(spacing: 8) {
                             Text(emoji)
-                                .font(.system(size: 16))
+                                .font(.callout)
                             Text(text)
                                 .font(.subheadline)
                                 .lineLimit(1)
@@ -364,9 +368,9 @@ struct HomeView: View {
                             showAttachmentOptions = true
                         }) {
                             Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .medium))
+                                .font(.callout.weight(.medium))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 24, height: 24)
+                                .frame(minWidth: 24, minHeight: 24)
                         }
                         .accessibilityLabel("Add Attachment")
                         .accessibilityIdentifier("homeAttachButton")
@@ -399,7 +403,7 @@ struct HomeView: View {
                         sendMessage()
                     }) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28, weight: .medium))
+                            .font(.title.weight(.medium))
                             .foregroundStyle(canSendMessage ? .blue : .secondary.opacity(0.5))
                             .scaleEffect(canSendMessage ? 1.0 : 0.8)
                     }

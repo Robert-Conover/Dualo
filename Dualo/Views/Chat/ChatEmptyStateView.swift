@@ -8,6 +8,8 @@ import SwiftUI
 /// Shown in a chat with no messages yet: a greeting plus quick prompts that fill the composer.
 struct ChatEmptyStateView: View {
     let isLoadingModel: Bool
+    @ScaledMetric(relativeTo: .title2) private var iconSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .title2) private var circleSize: CGFloat = 100
     let onSelectPrompt: (String) -> Void
 
     private let quickPrompts = [
@@ -30,10 +32,10 @@ struct ChatEmptyStateView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 100, height: 100)
+                    .frame(width: circleSize, height: circleSize)
 
                 Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 44, weight: .light))
+                    .font(.system(size: iconSize, weight: .light))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue.opacity(0.7), .purple.opacity(0.6)],
@@ -78,12 +80,12 @@ struct ChatEmptyStateView: View {
                     }) {
                         HStack(spacing: 10) {
                             Text(emoji)
-                                .font(.system(size: 18))
+                                .font(.body)
                             Text(text)
                                 .font(.subheadline.weight(.medium))
                             Spacer()
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         }
                         .foregroundStyle(.primary)

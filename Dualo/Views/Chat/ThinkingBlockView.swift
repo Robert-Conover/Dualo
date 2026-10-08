@@ -28,23 +28,23 @@ struct ThinkingBlockView: View {
                 Button(action: toggleExpanded) {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                         
                         Image(systemName: SystemImages.brainProfile)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.footnote.weight(.medium))
                             .foregroundStyle(.secondary)
                         
                         Text("Thought process")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                         
                         Spacer()
                         
                         if !isExpanded, !previewText.isEmpty {
                             Text(previewText)
-                                .font(.system(size: 12))
+                                .font(.caption)
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -60,7 +60,7 @@ struct ThinkingBlockView: View {
                 
                 Button(action: copyContent) {
                     Image(systemName: showCopyConfirmation ? "checkmark" : SystemImages.copyIcon)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                         .contentTransition(.symbolEffect(.replace))
                 }

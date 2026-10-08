@@ -15,6 +15,8 @@ struct LocalModelsView: View {
     @State private var modelToDelete: LocalModel?
     @State private var downloadError: String?
     @State private var showDownloadError = false
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 40
+    @ScaledMetric(relativeTo: .body) private var deleteButtonSize: CGFloat = 32
     
     var body: some View {
         List {
@@ -170,9 +172,9 @@ struct LocalModelsView: View {
             // Delete button only - model selection happens via the model picker in chat views
             Button(action: { confirmDelete(model) }) {
                 Image(systemName: SystemImages.trash)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.red)
-                    .frame(width: 32, height: 32)
+                    .frame(width: deleteButtonSize, height: deleteButtonSize)
                     .background(Color.red.opacity(0.15), in: Circle())
             }
             
@@ -211,10 +213,10 @@ struct LocalModelsView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 40, height: 40)
+                .frame(width: iconSize, height: iconSize)
             
             Text(letter)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(.title3, design: .rounded, weight: .bold))
                 .foregroundStyle(
                     LinearGradient(
                         colors: colors,

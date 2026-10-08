@@ -11,6 +11,7 @@ struct ConversationsSheetView: View {
     @EnvironmentObject var conversationManager: ConversationManager
     @Binding var selectedConversation: Conversation?
     @Binding var isPresented: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     @State private var searchText = ""
     @State private var showingDeleteAlert = false
@@ -99,37 +100,26 @@ struct ConversationsSheetView: View {
                         selectedConversation = conversation
                         isPresented = false
                     }) {
-                        HStack(alignment: .center, spacing: 12) {
+                        rowLayout {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(conversation.title)
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(.callout.weight(.medium))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 
-                                HStack(spacing: 8) {
-                                    Text(timeString(from: conversation.updatedAt))
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.secondary)
-                                    
-                                    Text("•")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.quaternary)
-                                    
-                                    Text("\(conversation.messages.count) messages")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.tertiary)
-                                }
+                                Text("\(timeString(from: conversation.updatedAt)) · ^[\(conversation.messages.count) message](inflect: true)")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
 
                                 if let snippet = result.snippet {
                                     Text(highlighted(snippet))
-                                        .font(.system(size: 14))
+                                        .font(.subheadline)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(2)
                                         .accessibilityIdentifier("conversationSearchSnippet")
                                 }
                             }
-                            
-                            Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             
                             modelBadge(for: conversation)
                         }
@@ -158,7 +148,7 @@ struct ConversationsSheetView: View {
                 }
             } header: {
                 Text(isSearching ? "Results" : "Recents")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(nil)
             }
@@ -167,12 +157,19 @@ struct ConversationsSheetView: View {
         .scrollDismissesKeyboard(.immediately)
     }
 
+    /// Side by side, or the badge under the text when accessibility text sizes leave no room
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+    }
+
     /// The snippet with the search term in bold
     private func highlighted(_ snippet: String) -> AttributedString {
         var text = AttributedString(snippet)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if let match = text.range(of: query, options: ConversationSearch.matchOptions) {
-            text[match].font = .system(size: 14, weight: .semibold)
+            text[match].font = .subheadline.weight(.semibold)
             text[match].foregroundColor = .primary
         }
         return text
@@ -195,9 +192,9 @@ struct ConversationsSheetView: View {
 
         return HStack(spacing: 4) {
             Image(systemName: isLocal ? "iphone" : "sparkles")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.caption2.weight(.semibold))
             Text(shortModelName(conversation.model))
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .lineLimit(1)
         }
         .foregroundStyle(isLocal ? .blue : .green)

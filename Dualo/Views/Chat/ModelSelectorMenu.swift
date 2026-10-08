@@ -76,14 +76,14 @@ struct ModelSelectorMenu: View {
     private var label: some View {
         HStack(spacing: 6) {
             Image(systemName: ModelUtilities.icon(for: currentProvider))
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
 
             Text(modelDisplayName(for: currentModel))
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .lineLimit(1)
 
             Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
         }
         .foregroundStyle(.primary)
         .padding(.horizontal, 6)

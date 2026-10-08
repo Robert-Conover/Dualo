@@ -14,6 +14,7 @@ final class ChatFlowUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait // The taps and swipes assume portrait
         app = XCUIApplication()
         app.launchArguments = ["-UITestStubAPI"]
         app.launch()

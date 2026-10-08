@@ -69,24 +69,24 @@ struct ChatInputBar: View {
     private func generationStatsSection(stats: GenerationStats) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.green)
 
             Text("\(stats.tokenCount) tokens")
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
 
             Text("•")
                 .foregroundStyle(Color(.tertiaryLabel))
 
             Text(stats.formattedDuration)
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
             Text("•")
                 .foregroundStyle(Color(.tertiaryLabel))
 
             Text(stats.formattedSpeed)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
 
             // Context usage indicator (compact, in stats banner)
@@ -98,7 +98,7 @@ struct ChatInputBar: View {
                 }
             }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -126,9 +126,9 @@ struct ChatInputBar: View {
                         showAttachmentOptions = true
                     }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.callout.weight(.medium))
                             .foregroundStyle(.blue)
-                            .frame(width: 24, height: 24)
+                            .frame(minWidth: 24, minHeight: 24)
                     }
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .accessibilityLabel("Add Attachment")
@@ -168,7 +168,7 @@ struct ChatInputBar: View {
                     }
                 }) {
                     Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
-                        .font(.system(size: 24, weight: .medium))
+                        .font(.title2.weight(.medium))
                         .foregroundStyle(
                             viewModel.isStreaming ? .red :
                             canSendMessage ? .blue : .secondary

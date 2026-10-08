@@ -33,8 +33,8 @@ struct VoiceInputButton: View {
                         .symbolEffect(.variableColor.iterative, isActive: voiceInput.state == .listening)
                 }
             }
-            .font(.system(size: 18, weight: .medium))
-            .frame(width: 26, height: 26)
+            .font(.body.weight(.medium))
+            .frame(minWidth: 26, minHeight: 26)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

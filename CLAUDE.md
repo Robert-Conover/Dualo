@@ -78,7 +78,7 @@ The mic button in both composers (`VoiceInputButton`) dictates with the Speech f
 
 ### UI
 
-The app uses iOS 26's Liquid Glass through the native APIs wherever they exist. Toolbar items are plain buttons and menus, because the toolbar draws their glass (adding `.glassEffect` inside one draws a second layer). Sheets use a navigation bar with `Button(role: .close)`, `.searchable` and `ContentUnavailableView`, on the system sheet background. The chat composer is a `safeAreaBar`, so messages scroll under it. Keep `.glassEffect` for custom floating pieces like the composers and status pills, and `.buttonStyle(.glass)` for standalone buttons.
+The app uses iOS 26's Liquid Glass through the native APIs wherever they exist. Toolbar items are plain buttons and menus, because the toolbar draws their glass (adding `.glassEffect` inside one draws a second layer). Sheets use a navigation bar with `Button(role: .close)`, `.searchable` and `ContentUnavailableView`, on the system sheet background. The chat composer is a `safeAreaBar`, so messages scroll under it. Keep `.glassEffect` for custom floating pieces like the composers and status pills, and `.buttonStyle(.glass)` for standalone buttons. Text follows Dynamic Type: use text styles (`.body`, `.caption`, `.system(.footnote, design: .monospaced)`) rather than `.system(size:)`, size icon tiles and other fixed frames with `@ScaledMetric`, and switch side-by-side rows to stacked ones when `dynamicTypeSize.isAccessibilitySize` (see `ConversationsSheetView`'s `rowLayout`).
 
 ### Constants
 

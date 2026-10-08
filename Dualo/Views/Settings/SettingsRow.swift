@@ -13,15 +13,16 @@ import SwiftUI
 struct SettingsIcon: View {
     let systemName: String
     let color: Color
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 28
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
                 .fill(color.opacity(0.15))
-                .frame(width: 28, height: 28)
+                .frame(width: size, height: size)
 
             Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(color)
         }
     }
@@ -32,6 +33,7 @@ struct SettingsRow: View {
     let title: String
     let color: Color
     var subtitle: String? = nil
+    var subtitleLineLimit: Int? = nil
     var showChevron: Bool = true
     
     var body: some View {
@@ -48,6 +50,7 @@ struct SettingsRow: View {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(subtitleLineLimit)
                 }
             }
             
@@ -56,7 +59,7 @@ struct SettingsRow: View {
             // Optional chevron for navigation rows
             if showChevron {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -72,6 +75,7 @@ struct SettingsRowGradient: View {
     let gradientColors: [Color]
     var subtitle: String? = nil
     var showChevron: Bool = true
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 28
     
     var body: some View {
         HStack(spacing: 12) {
@@ -85,10 +89,10 @@ struct SettingsRowGradient: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 28, height: 28)
+                    .frame(width: iconSize, height: iconSize)
                 
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: gradientColors,
@@ -116,7 +120,7 @@ struct SettingsRowGradient: View {
             // Optional chevron for navigation rows
             if showChevron {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
         }

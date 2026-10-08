@@ -46,7 +46,7 @@ struct TestConnectionButtonView: View {
             if connectionTestResult != nil && !isTestingConnection {
                 Button(action: onDismissResult) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.body)
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.borderless)

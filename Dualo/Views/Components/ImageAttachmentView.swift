@@ -124,8 +124,9 @@ struct PendingAttachmentPreview: View {
 
                         Button(action: { onRemove(attachment) }) {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
+                                .font(.body)
                                 .foregroundStyle(.white, .black.opacity(0.6))
+                                .dynamicTypeSize(...DynamicTypeSize.xxLarge) // Sits on a fixed-size thumbnail
                         }
                         .offset(x: 6, y: -6)
                     }

@@ -26,14 +26,14 @@ struct CodeBlockView: View {
             if let language = language, !language.isEmpty {
                 HStack {
                     Text(language.uppercased())
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(.caption2, design: .rounded, weight: .semibold))
                         .foregroundStyle(.secondary)
                     
                     Spacer()
                     
                     Button(action: copyCode) {
                         Image(systemName: showCopyToast ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
                             .contentTransition(.symbolEffect(.replace))
                     }
@@ -52,7 +52,7 @@ struct CodeBlockView: View {
                     
                     Button(action: copyCode) {
                         Image(systemName: showCopyToast ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
                             .contentTransition(.symbolEffect(.replace))
                     }
@@ -66,7 +66,7 @@ struct CodeBlockView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
-                    .font(.system(size: 14, design: .monospaced))
+                    .font(.system(.subheadline, design: .monospaced))
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
                     .padding(12)

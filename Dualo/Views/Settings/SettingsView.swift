@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var apiKeyValidationError: String?
     @AppStorage(CustomInstructions.key) private var customInstructions = ""
+    @ScaledMetric(relativeTo: .body) private var modelIconSize: CGFloat = 28
 
     // App version from bundle
     private var appVersion: String {
@@ -41,9 +42,9 @@ struct SettingsView: View {
                             title: "Custom Instructions",
                             color: .orange,
                             subtitle: customInstructions.isEmpty ? "Off" : customInstructions,
+                            subtitleLineLimit: 1,
                             showChevron: false
                         )
-                        .lineLimit(1)
                     }
                     .accessibilityIdentifier("customInstructionsRow")
                 } header: {
@@ -154,10 +155,10 @@ struct SettingsView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 28, height: 28)
+                .frame(width: modelIconSize, height: modelIconSize)
             
             Text(letter)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(.footnote, design: .rounded, weight: .bold))
                 .foregroundStyle(
                     LinearGradient(
                         colors: colors,
