@@ -58,13 +58,10 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             welcomeContent
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, like the chat composer, so it rides on top of the keyboard as it moves
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 inputBar
-                    .keyboardResponsive()
             }
-            // Deterministic keyboard handling: ignore SwiftUI’s keyboard safe area and drive the composer
-            // position ourselves via `keyboardResponsive()`.
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .background {
                 // The chat background with a still glow of the brand colors at the top; both
                 // follow light and dark mode
