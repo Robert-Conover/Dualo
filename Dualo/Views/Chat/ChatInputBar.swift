@@ -41,6 +41,10 @@ struct ChatInputBar: View {
                 contextUsageSection
             }
 
+            if viewModel.editingMessageId != nil {
+                editingSection
+            }
+
             // Pending attachments preview
             if !pendingAttachments.isEmpty {
                 PendingAttachmentPreview(attachments: pendingAttachments) { attachment in
@@ -53,6 +57,7 @@ struct ChatInputBar: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.editingMessageId)
     }
 
     // MARK: - Subviews
@@ -101,6 +106,28 @@ struct ChatInputBar: View {
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(in: .capsule)
+        .padding(.top, 8)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private var editingSection: some View {
+        HStack(spacing: 10) {
+            Label("Editing message", systemImage: "pencil")
+                .font(.footnote.weight(.medium))
+
+            Button("Cancel Editing", systemImage: "xmark") {
+                HapticFeedback.light()
+                viewModel.cancelEditing()
+                messageText = ""
+            }
+            .labelStyle(.iconOnly)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("cancelEditingButton")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

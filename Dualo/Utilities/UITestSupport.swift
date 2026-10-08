@@ -29,11 +29,14 @@ enum UITestSupport {
 /// - `[slow]`: waits 3 seconds before the first word
 /// - `[drip]`: streams slowly (~6 seconds), leaving time to stop mid-reply
 /// - `[long]`: replies with enough lines to scroll
+/// A message sent again (retried, edited unchanged or regenerated) gets "Take 2. " and so on
+/// before its reply, so tests can tell the new reply from the old one.
 @MainActor
 final class StubAPIService: APIServiceProtocol {
     static let reply = "This is a stubbed reply streamed word by word for UI tests. It ends with STUB-END"
 
     private var failedOnce: Set<String> = []
+    private var sendCounts: [String: Int] = [:]
 
     func sendMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) async throws -> String {
         Self.reply
@@ -46,13 +49,18 @@ final class StubAPIService: APIServiceProtocol {
         }
 
         let shouldFail = message.contains("[fail]") && failedOnce.insert(message).inserted
+        sendCounts[message, default: 0] += 1
+        let take = sendCounts[message, default: 1]
         let wordDelay: Duration = message.contains("[drip]") ? .milliseconds(400) : .milliseconds(150)
         let firstWordDelay: Duration = message.contains("[slow]") ? .seconds(3) : wordDelay
-        let words: [String]
+        var words: [String]
         if message.contains("[long]") {
             words = (1...60).map { "Line \($0)\n\n" } + ["STUB-END"]
         } else {
             words = Self.reply.split(separator: " ").map { String($0) + " " }
+        }
+        if take > 1 {
+            words.insert("Take \(take). ", at: 0)
         }
 
         return AsyncThrowingStream { continuation in

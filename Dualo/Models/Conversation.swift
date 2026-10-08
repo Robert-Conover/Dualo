@@ -94,6 +94,19 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         }
     }
     
+    /// Removes the message at `index` and every message after it. A title made from a
+    /// removed message goes too, so the next message names the chat again.
+    mutating func removeMessages(from index: Int) {
+        guard messages.indices.contains(index) else { return }
+        if let firstUserIndex = messages.firstIndex(where: { $0.role == Message.Role.user }),
+           firstUserIndex >= index,
+           title == generateTitle(from: messages[firstUserIndex].content) {
+            title = AppConstants.Data.newChatTitle
+        }
+        messages.removeSubrange(index...)
+        updatedAt = Date()
+    }
+
     var lastMessage: Message? {
         messages.last
     }

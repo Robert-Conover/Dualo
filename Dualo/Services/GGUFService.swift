@@ -360,6 +360,14 @@ class GGUFService: ObservableObject {
         return stream
     }
     
+    /// Makes the next message load its chat's history from the app instead of reusing the
+    /// turns the model holds, for when the app has changed them (an edited message or a
+    /// regenerated reply). The reset itself happens in `streamMessage`, after any reply
+    /// that's still winding down has finished.
+    func reloadHistoryOnNextMessage() {
+        currentConversationId = nil
+    }
+
     /// Clear the current conversation context
     /// Call this when starting a brand new conversation
     func clearConversationContext() {

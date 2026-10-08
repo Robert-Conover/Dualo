@@ -126,6 +126,45 @@ final class ChatFlowUITests: XCTestCase {
         XCTAssertFalse(text(containing: "Failed to send").exists)
     }
 
+    private var stubReplies: XCUIElementQuery {
+        app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'STUB-END'"))
+    }
+
+    func testEditingLastMessageReplacesItAndItsReply() {
+        startChat(with: "Original question")
+        waitForReplyToFinish()
+
+        // Cancelling leaves the chat as it was
+        text(containing: "Original question").press(forDuration: 1)
+        app.buttons["Edit"].tap()
+        let composer = element("chatComposer")
+        XCTAssertEqual(composer.value as? String, "Original question")
+        element("cancelEditingButton").tap()
+        XCTAssertFalse(app.staticTexts["Editing message"].waitForExistence(timeout: 2))
+        XCTAssertNotEqual(composer.value as? String, "Original question")
+
+        text(containing: "Original question").press(forDuration: 1)
+        app.buttons["Edit"].tap()
+        XCTAssertTrue(app.staticTexts["Editing message"].waitForExistence(timeout: 5))
+        composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "question".count) + "answer")
+        element("chatSendButton").tap()
+
+        XCTAssertTrue(text(containing: "Original answer").waitForExistence(timeout: 5), "Edited message missing")
+        waitForReplyToFinish()
+        XCTAssertFalse(text(containing: "Original question").exists, "Original message wasn't replaced")
+        XCTAssertEqual(stubReplies.count, 1, "Original reply wasn't replaced")
+    }
+
+    func testRegeneratingLastReply() {
+        startChat(with: "Tell me something")
+        waitForReplyToFinish()
+
+        element("regenerateButton").tap()
+        XCTAssertTrue(text(containing: "Take 2.").waitForExistence(timeout: 10), "Reply wasn't regenerated")
+        waitForReplyToFinish()
+        XCTAssertEqual(stubReplies.count, 1, "Old reply is still there")
+    }
+
     func testScrollToBottomButtonAppearsAndWorks() {
         startChat(with: "[long] hello")
         waitForReplyToFinish(timeout: 30)

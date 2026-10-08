@@ -127,8 +127,15 @@ struct SimpleChatView: View {
             currentProvider: currentProvider,
             showScrollToBottom: $showScrollToBottom,
             scrollToBottomAction: $performScrollToBottom,
-            isInputFocused: $isInputFocused
+            isInputFocused: $isInputFocused,
+            onEditMessage: beginEditing
         )
+    }
+
+    private func beginEditing(_ messageId: UUID) {
+        guard let text = viewModel.beginEditing(messageId) else { return }
+        messageText = text
+        isInputFocused = true
     }
 
     private func scrollToBottom() {

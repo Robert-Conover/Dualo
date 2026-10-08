@@ -88,6 +88,17 @@ struct GGUFServiceIntegrationTests {
         #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
 
+    @Test func reloadingHistoryForgetsTurnsTheAppRemoved() async throws {
+        let chat = UUID()
+        _ = try await reply(to: "My name is Zorblax. Just say OK.", in: chat)
+
+        // The app dropped that exchange (an edited message or regenerated reply)
+        service.reloadHistoryOnNextMessage()
+        let reply = try await reply(to: "What is my name? Answer in one word.", history: [], in: chat)
+
+        #expect(!answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
     @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
         let chat = UUID()
         _ = try await reply(to: "Say hi.", in: chat)
