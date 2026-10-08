@@ -218,6 +218,29 @@ final class ChatFlowUITests: XCTestCase {
         XCTAssertTrue(text(containing: "No results").waitForExistence(timeout: 5), "No-results message missing")
     }
 
+    func testDictatedMessageCanBeSent() {
+        // Under -UITestStubAPI, dictation "hears" StubVoiceTranscriber.phrase
+        let mic = element("homeMicButton")
+        XCTAssertTrue(mic.waitForExistence(timeout: 10), "Mic button not found")
+        mic.tap()
+
+        let composer = element("homeComposer")
+        let heard = NSPredicate(format: "value == %@", "Hello from voice input")
+        expectation(for: heard, evaluatedWith: composer)
+        waitForExpectations(timeout: 5)
+
+        mic.tap() // Stop: the final result adds punctuation
+        let final = NSPredicate(format: "value == %@", "Hello from voice input.")
+        expectation(for: final, evaluatedWith: composer)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(mic.label, "Dictate", "Mic didn't return to idle")
+
+        element("homeSendButton").tap()
+        XCTAssertTrue(text(containing: "Hello from voice input.").waitForExistence(timeout: 10), "Dictated message wasn't sent")
+        waitForReplyToFinish()
+        XCTAssertTrue(element("chatMicButton").exists, "Chat mic button missing")
+    }
+
     func testCloudModelChatOffersImageAttachments() {
         XCTAssertTrue(element("homeAttachButton").waitForExistence(timeout: 10), "Home attach button missing")
         startChat(with: "Hello")

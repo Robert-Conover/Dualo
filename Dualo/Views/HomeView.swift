@@ -10,6 +10,7 @@ import OSLog
 
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var voiceInput = VoiceInputController()
     @EnvironmentObject var conversationManager: ConversationManager
     @EnvironmentObject var localModelManager: LocalModelManager
     @EnvironmentObject var ggufService: GGUFService
@@ -431,6 +432,13 @@ struct HomeView: View {
                             }
                         }
                     
+                    VoiceInputButton(
+                        voiceInput: voiceInput,
+                        text: $messageText,
+                        isInputFocused: $isInputFocused,
+                        identifierPrefix: "home"
+                    )
+
                     // Send button with bounce animation
                     Button(action: {
                         HapticFeedback.medium()
@@ -474,6 +482,8 @@ struct HomeView: View {
     }
     
     private func sendMessage() {
+        // Send what's been heard so far; later results mustn't refill the cleared composer
+        voiceInput.cancel()
         let trimmedMessage = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty || !pendingAttachments.isEmpty else { return }
         

@@ -24,6 +24,8 @@ struct ChatInputBar: View {
     let currentProvider: APIProvider
     let onSendMessage: () -> Void
 
+    @StateObject private var voiceInput = VoiceInputController()
+
     var body: some View {
         VStack(spacing: 0) {
             // Live streaming stats (for local models while generating)
@@ -154,9 +156,17 @@ struct ChatInputBar: View {
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .onSubmit {
                         if canSendMessage && !viewModel.isStreaming {
-                            onSendMessage()
+                            send()
                         }
                     }
+
+                VoiceInputButton(
+                    voiceInput: voiceInput,
+                    text: $messageText,
+                    isInputFocused: $isInputFocused,
+                    identifierPrefix: "chat"
+                )
+                .disabled(viewModel.isLoading || viewModel.isStreaming)
 
                 // Embedded send button
                 Button(action: {
@@ -165,7 +175,7 @@ struct ChatInputBar: View {
                     if viewModel.isStreaming {
                         viewModel.stopStreaming()
                     } else {
-                        onSendMessage()
+                        send()
                     }
                 }) {
                     Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
@@ -192,6 +202,12 @@ struct ChatInputBar: View {
     }
 
     // MARK: - Helpers
+
+    private func send() {
+        // Send what's been heard so far; later results mustn't refill the cleared composer
+        voiceInput.cancel()
+        onSendMessage()
+    }
 
     private var canSendMessage: Bool {
         let hasText = !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

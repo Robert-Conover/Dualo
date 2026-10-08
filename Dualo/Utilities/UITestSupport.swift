@@ -3,7 +3,8 @@
 //  Dualo
 //
 //  Debug-only hooks for DualoUITests. Launching with `-UITestStubAPI` swaps the
-//  cloud API for StubAPIService so chat flows can run without an API key.
+//  cloud API for StubAPIService so chat flows can run without an API key, and
+//  dictation for StubVoiceTranscriber so it needs no microphone.
 //  Local models still run for real.
 //
 
@@ -78,6 +79,42 @@ final class StubAPIService: APIServiceProtocol {
 
     func stopStreaming() {
         APIService.shared.stopStreaming()
+    }
+}
+
+/// "Hears" a fixed phrase, a few words at a time, then waits to be stopped.
+@MainActor
+final class StubVoiceTranscriber: VoiceTranscribing {
+    static let phrase = "Hello from voice input"
+
+    private var continuation: AsyncThrowingStream<TranscriptionUpdate, Error>.Continuation?
+    private var heardTask: Task<Void, Never>?
+
+    func start() async throws -> AsyncThrowingStream<TranscriptionUpdate, Error> {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: TranscriptionUpdate.self)
+        self.continuation = continuation
+        let words = Self.phrase.split(separator: " ")
+        heardTask = Task {
+            for count in 1...words.count {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+                continuation.yield(TranscriptionUpdate(text: words.prefix(count).joined(separator: " "), isFinal: false))
+            }
+        }
+        return stream
+    }
+
+    func finish() async {
+        heardTask?.cancel()
+        continuation?.yield(TranscriptionUpdate(text: Self.phrase + ".", isFinal: true))
+        continuation?.finish()
+        continuation = nil
+    }
+
+    func cancel() async {
+        heardTask?.cancel()
+        continuation?.finish()
+        continuation = nil
     }
 }
 #endif

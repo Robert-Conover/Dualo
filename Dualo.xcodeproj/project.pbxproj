@@ -410,7 +410,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dualo needs camera access to take photos for your conversations.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dualo uses the microphone so you can dictate messages. Speech is transcribed on your device.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Dualo needs photo library access to attach images to your conversations.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dualo transcribes your speech on your device so you can dictate messages.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -441,7 +443,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Dualo needs camera access to take photos for your conversations.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Dualo uses the microphone so you can dictate messages. Speech is transcribed on your device.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Dualo needs photo library access to attach images to your conversations.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dualo transcribes your speech on your device so you can dictate messages.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
