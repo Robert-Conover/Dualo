@@ -10,6 +10,7 @@ import OSLog
 
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var voiceInput = VoiceInputController()
     @EnvironmentObject var conversationManager: ConversationManager
     @EnvironmentObject var localModelManager: LocalModelManager
     @EnvironmentObject var ggufService: GGUFService
@@ -27,13 +28,14 @@ struct HomeView: View {
     @State private var modelLoadErrorMessage = ""
     
     @FocusState private var isInputFocused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     // MARK: - Prompt Suggestions
     private let promptSuggestions = [
-        ("💡", "Explain a concept"),
-        ("✍️", "Help me write"),
-        ("🐛", "Debug my code"),
-        ("🎯", "Plan a project")
+        ("lightbulb", "Explain a concept"),
+        ("pencil.line", "Help me write"),
+        ("ladybug", "Debug my code"),
+        ("checklist", "Plan a project")
     ]
     
     private var currentModelName: String {
@@ -56,10 +58,7 @@ struct HomeView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Welcome content
-                welcomeContent
-            }
+            welcomeContent
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 inputBar
                     .keyboardResponsive()
@@ -68,37 +67,27 @@ struct HomeView: View {
             // position ourselves via `keyboardResponsive()`.
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .background {
-                // Animated gradient background (background ignores safe areas, content does not).
-                // Driven by the clock rather than a repeatForever state animation, which would also
-                // capture initial layout changes (frame sizes) and loop them forever.
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
-                    let p = (1 - cos(t * .pi / 6)) / 2 // eases 0 → 1 over 6s, then back
+                // The chat background with a still glow of the brand colors at the top; both
+                // follow light and dark mode
+                ZStack {
+                    Color.theme.chatBackground
                     LinearGradient(
-                        colors: [
-                            Color.theme.gradientEnd.opacity(0.6).mix(with: Color.theme.gradientStart.opacity(0.7), by: p),
-                            Color.theme.gradientStart.opacity(0.4).mix(with: Color.theme.gradientEnd.opacity(0.5), by: p),
-                            Color.theme.gradientDark
-                        ],
-                        startPoint: UnitPoint(x: 1 - p, y: 0),
-                        endPoint: .bottomTrailing
+                        colors: [Color.theme.gradientEnd.opacity(0.28), Color.theme.gradientStart.opacity(0.12), .clear],
+                        startPoint: .top,
+                        endPoint: .center
                     )
                 }
                 .ignoresSafeArea()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .navigationBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     settingsButton
                     conversationsButton
                 }
                 
                 ToolbarItem(placement: .principal) {
                     modelSelector
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    newChatButton
                 }
             }
             .gesture(
@@ -121,7 +110,6 @@ struct HomeView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(Color.theme.sheetBackground)
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -166,34 +154,19 @@ struct HomeView: View {
     
     // MARK: - Top Navigation Bar
     
+    // Plain buttons: the toolbar draws their glass
     private var settingsButton: some View {
-        Button(action: {
+        Button("Settings", systemImage: "gearshape") {
             HapticFeedback.light()
             showSettings = true
-        }) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Settings")
         }
-        .buttonStyle(.plain)
     }
     
     private var conversationsButton: some View {
-        Button(action: {
+        Button("Conversations", systemImage: "bubble.left") {
             HapticFeedback.light()
             showConversations = true
-        }) {
-            Image(systemName: "bubble.left")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Conversations")
         }
-        .buttonStyle(.plain)
     }
     
     // MARK: - Model Selector with Native Menu
@@ -253,136 +226,99 @@ struct HomeView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: currentProviderIcon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption.weight(.medium))
                 
                 Text(currentModelName)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
             }
             .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(in: .capsule)
+            .padding(.horizontal, 6)
         }
         .disabled(isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty))
-        .opacity((isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty)) ? 0.5 : 1)
-    }
-    
-    // MARK: - New Chat Button with Glass Effect (matched sizing to toolbar)
-    
-    @ViewBuilder
-    private var newChatButton: some View {
-        Button(action: {
-            HapticFeedback.medium()
-            
-            let newConversation = conversationManager.createNewConversation()
-            selectedConversation = newConversation
-        }) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("New chat")
-        }
-        .buttonStyle(.plain)
-        .disabled(true)
-        .opacity(0.5)
-        .accessibilityHint("Disabled on Home because you are already starting a new chat")
     }
     
     // MARK: - Welcome Content
     
+    /// Scrolls only when it doesn't fit, which takes the largest text sizes
     private var welcomeContent: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                VStack(spacing: 8) {
-                    Text("Welcome to Dualo")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    
-                    Text("Cloud & local AI, unified")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-                
-                // Loading indicator for local model
-                if ggufService.isLoading {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.7)))
-                            .scaleEffect(0.8)
-                        
-                        Text("Loading model...")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.6))
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 24)
+
+                    VStack(spacing: 8) {
+                        Text("Welcome to Dualo")
+                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                            .multilineTextAlignment(.center)
+
+                        Text("Cloud & local AI, unified")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+
+                        if ggufService.isLoading {
+                            ProgressView("Loading model…")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .padding(.horizontal, 20)
+
+                    Spacer(minLength: 24)
+
+                    promptSuggestionsView
+                        .padding(.bottom, 8)
+                }
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isInputFocused = false
                 }
             }
-            
-            Spacer()
-            
-            // Prompt suggestions
-            promptSuggestionsView
-            
-            // Feature hints (optional, subtle)
-            VStack(spacing: 8) {
-                Text("Swipe right for conversations")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .padding(.bottom, 8)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isInputFocused = false
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
     
     // MARK: - Prompt Suggestions
+
+    /// Capsules, until accessibility text sizes wrap them onto more lines
+    private var chipCornerRadius: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 20 : .infinity
+    }
     
     private var promptSuggestionsView: some View {
         VStack(spacing: 12) {
             Text("Try asking")
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
             
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                ForEach(promptSuggestions, id: \.1) { emoji, text in
-                    Button(action: {
-                        HapticFeedback.light()
-                        messageText = text
-                        isInputFocused = true
-                    }) {
-                        HStack(spacing: 8) {
-                            Text(emoji)
-                                .font(.system(size: 16))
-                            Text(text)
+            // One column at accessibility text sizes, so the suggestions aren't cut off
+            GlassEffectContainer(spacing: 10) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2), spacing: 10) {
+                    ForEach(promptSuggestions, id: \.1) { symbol, text in
+                        Button {
+                            HapticFeedback.light()
+                            messageText = text
+                            isInputFocused = true
+                        } label: {
+                            Label(text, systemImage: symbol)
                                 .font(.subheadline)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .frame(maxWidth: .infinity)
+                                .contentShape(.rect(cornerRadius: chipCornerRadius))
                         }
-                        .foregroundStyle(.white.opacity(0.9))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(.white.opacity(0.08))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(.white.opacity(0.12), lineWidth: 1)
-                                )
-                        )
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: chipCornerRadius))
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 20)
@@ -409,9 +345,9 @@ struct HomeView: View {
                             showAttachmentOptions = true
                         }) {
                             Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .medium))
+                                .font(.callout.weight(.medium))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 24, height: 24)
+                                .frame(minWidth: 24, minHeight: 24)
                         }
                         .accessibilityLabel("Add Attachment")
                         .accessibilityIdentifier("homeAttachButton")
@@ -431,16 +367,22 @@ struct HomeView: View {
                             }
                         }
                     
+                    VoiceInputButton(
+                        voiceInput: voiceInput,
+                        text: $messageText,
+                        isInputFocused: $isInputFocused,
+                        identifierPrefix: "home"
+                    )
+
                     // Send button with bounce animation
                     Button(action: {
                         HapticFeedback.medium()
                         sendMessage()
                     }) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28, weight: .medium))
+                            .font(.title.weight(.medium))
                             .foregroundStyle(canSendMessage ? .blue : .secondary.opacity(0.5))
                             .scaleEffect(canSendMessage ? 1.0 : 0.8)
-                            .rotationEffect(.degrees(canSendMessage ? 0 : -90))
                     }
                     .disabled(!canSendMessage)
                     .accessibilityLabel("Send")
@@ -474,6 +416,8 @@ struct HomeView: View {
     }
     
     private func sendMessage() {
+        // Send what's been heard so far; later results mustn't refill the cleared composer
+        voiceInput.cancel()
         let trimmedMessage = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty || !pendingAttachments.isEmpty else { return }
         

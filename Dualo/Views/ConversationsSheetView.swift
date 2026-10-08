@@ -11,6 +11,7 @@ struct ConversationsSheetView: View {
     @EnvironmentObject var conversationManager: ConversationManager
     @Binding var selectedConversation: Conversation?
     @Binding var isPresented: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     
     @State private var searchText = ""
     @State private var showingDeleteAlert = false
@@ -19,36 +20,40 @@ struct ConversationsSheetView: View {
     @State private var conversationToRename: Conversation?
     @State private var renameText = ""
     
-    private var filteredConversations: [Conversation] {
-        if searchText.isEmpty {
-            return conversationManager.conversations
-        }
-        return conversationManager.conversations.filter { conversation in
-            conversation.title.localizedCaseInsensitiveContains(searchText) ||
-            conversation.preview.localizedCaseInsensitiveContains(searchText)
-        }
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Header
-                headerView
-                
+            let searchResults = ConversationSearch.search(conversationManager.conversations, for: searchText)
+            Group {
                 if conversationManager.isLoading {
-                    loadingView
+                    ProgressView("Loading Conversations…")
                 } else if conversationManager.conversations.isEmpty {
-                    emptyStateView
+                    ContentUnavailableView(
+                        "No Conversations",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Chats you start from the home screen show up here.")
+                    )
+                } else if searchResults.isEmpty {
+                    ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
                 } else {
-                    // Conversations list
-                    conversationsList
+                    conversationsList(searchResults)
                 }
-                
-                // Search bar at bottom
-                searchBar
             }
-            .background(Color.theme.sheetBackground)
-            .navigationBarHidden(true)
+            .navigationTitle("Conversations")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) {
+                        HapticFeedback.light()
+                        isPresented = false
+                    }
+                }
+            }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search chats")
+            .autocorrectionDisabled()
         }
         .alert("Delete Conversation", isPresented: $showingDeleteAlert) {
             Button("Delete", role: .destructive) {
@@ -83,110 +88,38 @@ struct ConversationsSheetView: View {
         }
     }
     
-    // MARK: - Header
-    
-    private var headerView: some View {
-        HStack {
-            Spacer()
-            
-            Text("Conversations")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.primary)
-            
-            Spacer()
-        }
-        .overlay(alignment: .trailing) {
-            Button(action: {
-                HapticFeedback.light()
-                isPresented = false
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 30, height: 30)
-            }
-            .tint(.primary)
-            .glassEffect(in: .circle)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-    }
-    
-    // MARK: - Loading State
-    
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            ProgressView()
-                .scaleEffect(1.2)
-            
-            Text("Loading conversations...")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    // MARK: - Empty State
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 48, weight: .thin))
-                .foregroundStyle(.secondary.opacity(0.6))
-            
-            Text("No conversations yet")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-            
-            Text("Start a new chat from the home screen")
-                .font(.system(size: 14))
-                .foregroundStyle(.tertiary)
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
     // MARK: - Conversations List
     
-    private var conversationsList: some View {
+    private func conversationsList(_ searchResults: [ConversationSearch.Result]) -> some View {
         List {
             Section {
-                ForEach(filteredConversations) { conversation in
+                ForEach(searchResults) { result in
+                    let conversation = result.conversation
                     Button(action: {
                         HapticFeedback.light()
                         selectedConversation = conversation
                         isPresented = false
                     }) {
-                        HStack(alignment: .center, spacing: 12) {
+                        rowLayout {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(conversation.title)
-                                    .font(.system(size: 16, weight: .medium))
+                                    .font(.callout.weight(.medium))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 
-                                HStack(spacing: 8) {
-                                    Text(timeString(from: conversation.updatedAt))
-                                        .font(.system(size: 13))
+                                Text("\(timeString(from: conversation.updatedAt)) · ^[\(conversation.messages.count) message](inflect: true)")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+
+                                if let snippet = result.snippet {
+                                    Text(highlighted(snippet))
+                                        .font(.subheadline)
                                         .foregroundStyle(.secondary)
-                                    
-                                    Text("•")
-                                        .font(.system(size: 10))
-                                        .foregroundStyle(.quaternary)
-                                    
-                                    Text("\(conversation.messages.count) messages")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(2)
+                                        .accessibilityIdentifier("conversationSearchSnippet")
                                 }
                             }
-                            
-                            Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             
                             modelBadge(for: conversation)
                         }
@@ -214,14 +147,32 @@ struct ConversationsSheetView: View {
                     }
                 }
             } header: {
-                Text("Recents")
-                    .font(.system(size: 13, weight: .semibold))
+                Text(isSearching ? "Results" : "Recents")
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(nil)
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    /// Side by side, or the badge under the text when accessibility text sizes leave no room
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+    }
+
+    /// The snippet with the search term in bold
+    private func highlighted(_ snippet: String) -> AttributedString {
+        var text = AttributedString(snippet)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let match = text.range(of: query, options: ConversationSearch.matchOptions) {
+            text[match].font = .subheadline.weight(.semibold)
+            text[match].foregroundColor = .primary
+        }
+        return text
     }
     
     private static let relativeDateFormatter: RelativeDateTimeFormatter = {
@@ -241,9 +192,10 @@ struct ConversationsSheetView: View {
 
         return HStack(spacing: 4) {
             Image(systemName: isLocal ? "iphone" : "sparkles")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.caption2.weight(.semibold))
             Text(shortModelName(conversation.model))
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
+                .lineLimit(1)
         }
         .foregroundStyle(isLocal ? .blue : .green)
         .padding(.horizontal, 8)
@@ -259,28 +211,10 @@ struct ConversationsSheetView: View {
         case "gpt-6-astra": return "Astra"
         case "gpt-6.1-sol": return "Sol"
         case "gpt-6-luna": return "Luna"
-        default: return String(model.prefix(8))
+        default:
+            // Local models are stored by id ("qwen3.5-0.8b-q4"); show their name ("Qwen3.5 0.8B")
+            return LocalModelCatalog.model(withId: model)?.displayName ?? model
         }
-    }
-    
-    // MARK: - Search Bar
-    
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.secondary)
-            
-            TextField("Search", text: $searchText)
-                .font(.body)
-                .tint(.accentColor)
-                .textFieldStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .glassEffect(in: .rect(cornerRadius: 12))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
     }
 }
 

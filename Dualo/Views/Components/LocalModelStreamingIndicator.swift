@@ -35,12 +35,12 @@ struct LocalModelStreamingIndicator: View {
                 .opacity(isPulsing ? 1.0 : 0.6)
 
             Text("\(tokenCount)")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(.system(.footnote, design: .monospaced, weight: .semibold))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
 
             Text("tokens")
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
             if tokensPerSecond > 0 {
@@ -48,21 +48,14 @@ struct LocalModelStreamingIndicator: View {
                     .foregroundStyle(Color(.tertiaryLabel))
 
                 Text(String(format: "%.1f tok/s", tokensPerSecond))
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced, weight: .medium))
                     .foregroundStyle(.green)
                     .monospacedDigit()
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(Color.green.opacity(0.2), lineWidth: 1)
-                )
-        )
+        .glassEffect(in: .capsule)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
                 isPulsing = true

@@ -53,20 +53,20 @@ struct ContextUsageIndicator: View {
         HStack(spacing: 10) {
             // Icon
             Image(systemName: statusIcon)
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(progressColor)
 
             // Progress bar with text
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("Context")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
 
                     Spacer()
 
                     Text(usageInfo.formattedUsage)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.system(.caption2, design: .monospaced, weight: .medium))
                         .foregroundStyle(.primary)
                 }
 
@@ -91,14 +91,7 @@ struct ContextUsageIndicator: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(progressColor.opacity(usageInfo.isNearLimit ? 0.3 : 0.1), lineWidth: 1)
-                )
-        )
+        .glassEffect(in: .capsule)
     }
 
     // MARK: - Compact Indicator
@@ -106,10 +99,10 @@ struct ContextUsageIndicator: View {
     private var compactIndicator: some View {
         HStack(spacing: 4) {
             Image(systemName: statusIcon)
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
 
             Text(usageInfo.compactUsage)
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(.caption2, design: .monospaced, weight: .semibold))
         }
         .foregroundStyle(progressColor)
         .padding(.horizontal, 8)

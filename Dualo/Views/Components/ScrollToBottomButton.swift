@@ -14,20 +14,11 @@ struct ScrollToBottomButton: View {
         if isVisible {
             Button(action: action) {
                 Image(systemName: "arrow.down")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        LinearGradient(
-                            colors: [.blue, .blue.opacity(0.8)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        in: Circle()
-                    )
-                    .shadow(color: .blue.opacity(0.3), radius: 10, x: 0, y: 4)
-                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 28, height: 28)
             }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
             .accessibilityLabel("Scroll to bottom")
             .padding(.trailing, 16)
             .padding(.bottom, 8)

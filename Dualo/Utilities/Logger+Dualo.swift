@@ -23,6 +23,8 @@ extension Logger {
     static let config = Logger(subsystem: subsystem, category: "Config")
     /// Context-window tracking (ContextTracker)
     static let context = Logger(subsystem: subsystem, category: "Context")
+    /// Dictation (VoiceInputController, SpeechAnalyzerTranscriber)
+    static let voice = Logger(subsystem: subsystem, category: "Voice")
     /// View-level events
     static let ui = Logger(subsystem: subsystem, category: "UI")
 }

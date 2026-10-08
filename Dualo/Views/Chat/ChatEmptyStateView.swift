@@ -8,12 +8,14 @@ import SwiftUI
 /// Shown in a chat with no messages yet: a greeting plus quick prompts that fill the composer.
 struct ChatEmptyStateView: View {
     let isLoadingModel: Bool
+    @ScaledMetric(relativeTo: .title2) private var iconSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .title2) private var circleSize: CGFloat = 100
     let onSelectPrompt: (String) -> Void
 
     private let quickPrompts = [
-        ("💡", "Explain a concept to me"),
-        ("✍️", "Help me write something"),
-        ("🐛", "Debug this code")
+        ("lightbulb", "Explain a concept to me"),
+        ("pencil.line", "Help me write something"),
+        ("ladybug", "Debug this code")
     ]
 
     var body: some View {
@@ -30,10 +32,10 @@ struct ChatEmptyStateView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 100, height: 100)
+                    .frame(width: circleSize, height: circleSize)
 
                 Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 44, weight: .light))
+                    .font(.system(size: iconSize, weight: .light))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue.opacity(0.7), .purple.opacity(0.6)],
@@ -71,19 +73,21 @@ struct ChatEmptyStateView: View {
 
             // Quick prompt buttons
             VStack(spacing: 10) {
-                ForEach(quickPrompts, id: \.1) { emoji, text in
+                ForEach(quickPrompts, id: \.1) { symbol, text in
                     Button(action: {
                         HapticFeedback.light()
                         onSelectPrompt(text)
                     }) {
                         HStack(spacing: 10) {
-                            Text(emoji)
-                                .font(.system(size: 18))
+                            Image(systemName: symbol)
+                                .font(.body)
+                                .foregroundStyle(.tint)
+                                .frame(minWidth: 24)
                             Text(text)
                                 .font(.subheadline.weight(.medium))
                             Spacer()
                             Image(systemName: "arrow.right")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         }
                         .foregroundStyle(.primary)

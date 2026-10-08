@@ -176,7 +176,9 @@ struct SimpleChatView: View {
                     )
                 }
             }
-            
+        }
+        // A bar rather than a stack row, so messages scroll on under the glass composer
+        .safeAreaBar(edge: .bottom, spacing: 0) {
             inputBar
         }
     }

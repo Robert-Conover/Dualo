@@ -14,6 +14,7 @@ final class ChatFlowUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait // The taps and swipes assume portrait
         app = XCUIApplication()
         app.launchArguments = ["-UITestStubAPI"]
         app.launch()
@@ -194,6 +195,51 @@ final class ChatFlowUITests: XCTestCase {
             expectation(for: gone, evaluatedWith: shareSheet)
             waitForExpectations(timeout: 10)
         }
+    }
+
+    func testSearchFindsEarlierMessagesInAChat() {
+        // The title is the first four words, so "zebracorn" is only findable in the message
+        startChat(with: "Tell me about the zebracorn please")
+        waitForReplyToFinish()
+        app.buttons["Back"].firstMatch.tap()
+
+        let conversations = app.buttons["Conversations"]
+        XCTAssertTrue(conversations.waitForExistence(timeout: 10), "Conversations button not found")
+        conversations.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 5), "Search field not found")
+        search.tap()
+        search.typeText("Zebracorn")
+
+        let snippet = element("conversationSearchSnippet")
+        XCTAssertTrue(snippet.waitForExistence(timeout: 5), "No search result with a snippet")
+        XCTAssertTrue(snippet.label.contains("zebracorn"), "Snippet: \(snippet.label)")
+
+        search.typeText("xyz")
+        XCTAssertTrue(text(containing: "No Results").waitForExistence(timeout: 5), "No-results message missing")
+    }
+
+    func testDictatedMessageCanBeSent() {
+        // Under -UITestStubAPI, dictation "hears" StubVoiceTranscriber.phrase
+        let mic = element("homeMicButton")
+        XCTAssertTrue(mic.waitForExistence(timeout: 10), "Mic button not found")
+        mic.tap()
+
+        let composer = element("homeComposer")
+        let heard = NSPredicate(format: "value == %@", "Hello from voice input")
+        expectation(for: heard, evaluatedWith: composer)
+        waitForExpectations(timeout: 5)
+
+        mic.tap() // Stop: the final result adds punctuation
+        let final = NSPredicate(format: "value == %@", "Hello from voice input.")
+        expectation(for: final, evaluatedWith: composer)
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(mic.label, "Dictate", "Mic didn't return to idle")
+
+        element("homeSendButton").tap()
+        XCTAssertTrue(text(containing: "Hello from voice input.").waitForExistence(timeout: 10), "Dictated message wasn't sent")
+        waitForReplyToFinish()
+        XCTAssertTrue(element("chatMicButton").exists, "Chat mic button missing")
     }
 
     func testCloudModelChatOffersImageAttachments() {

@@ -70,26 +70,9 @@ struct ThemeColors {
     let secondarySystemGroupedBackground = Color(.secondarySystemGroupedBackground)
     let tertiarySystemGroupedBackground = Color(.tertiarySystemGroupedBackground)
     
-    // MARK: - Home Screen Gradient
+    // MARK: - Brand Colors (Home glow)
     let gradientStart = Color(red: 0.0, green: 0.48, blue: 1.0) // #007AFF Blue
     let gradientEnd = Color(red: 0.345, green: 0.337, blue: 0.839) // #5856D6 Purple
-    let gradientDark = Color(red: 0.05, green: 0.05, blue: 0.08) // Near black
-    
-    /// Home screen gradient background
-    var homeGradient: LinearGradient {
-        LinearGradient(
-            stops: [
-                .init(color: gradientStart.opacity(0.6), location: 0.0),
-                .init(color: gradientEnd.opacity(0.4), location: 0.3),
-                .init(color: gradientDark, location: 0.7)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-    
-    /// Sheet background - uses system color for Light/Dark mode adaptation
-    let sheetBackground = Color(.systemGroupedBackground)
 }
 
 // MARK: - Convenience Extensions
@@ -124,20 +107,5 @@ class ThemeProvider {
     
     func setTheme(_ scheme: ColorScheme?) {
         currentTheme = scheme
-    }
-}
-
-// MARK: - Gradient Background Modifier
-struct HomeGradientBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(Color.theme.homeGradient)
-            .background(Color.black) // Fallback
-    }
-}
-
-extension View {
-    func homeGradientBackground() -> some View {
-        modifier(HomeGradientBackground())
     }
 }

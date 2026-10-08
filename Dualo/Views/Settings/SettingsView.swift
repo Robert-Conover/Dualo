@@ -41,9 +41,9 @@ struct SettingsView: View {
                             title: "Custom Instructions",
                             color: .orange,
                             subtitle: customInstructions.isEmpty ? "Off" : customInstructions,
+                            subtitleLineLimit: 1,
                             showChevron: false
                         )
-                        .lineLimit(1)
                     }
                     .accessibilityIdentifier("customInstructionsRow")
                 } header: {
@@ -70,11 +70,10 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) {
                         dismiss()
                     }
-                    .fontWeight(.semibold)
                 }
             }
             .onAppear {
@@ -97,115 +96,28 @@ struct SettingsView: View {
     
     private var onDeviceSection: some View {
         Section {
-            // Quick model list (up to 3)
-            ForEach(localModelManager.availableModels.prefix(3)) { model in
-                modelQuickRow(model)
-            }
-            
-            // "Manage" / "See all" navigation link
             NavigationLink(destination: LocalModelsView()) {
-                SettingsRowGradient(
+                SettingsRow(
                     icon: "iphone",
-                    title: localModelManager.availableModels.count > 3
-                        ? "See all \(localModelManager.availableModels.count) models"
-                        : "Manage models",
-                    gradientColors: [.green, .mint],
-                    subtitle: "Download & manage on-device models",
+                    title: "Local Models",
+                    color: .green,
+                    subtitle: downloadedModelsSummary,
                     showChevron: false
                 )
             }
+            .accessibilityIdentifier("localModelsRow")
         } header: {
             Text("On-Device Models")
         } footer: {
             Label("100% private. Models run entirely on your device.", systemImage: "lock.shield.fill")
         }
     }
-    
-    private func modelQuickRow(_ model: LocalModel) -> some View {
-        HStack(spacing: 12) {
-            // Model icon
-            modelIcon(for: model)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.displayName)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text(localModelManager.getModelSizeString(model))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
-            Spacer()
-            
-            // Status badge
-            modelStatusBadge(for: model)
-        }
-        .padding(.vertical, 4)
-    }
-    
-    private func modelIcon(for model: LocalModel) -> some View {
-        let (letter, colors) = iconConfig(for: model)
-        
-        return ZStack {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(
-                    LinearGradient(
-                        colors: colors.map { $0.opacity(0.2) },
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 28, height: 28)
-            
-            Text(letter)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: colors,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        }
-    }
-    
-    private func iconConfig(for model: LocalModel) -> (String, [Color]) {
-        let name = model.displayName.lowercased()
-        
-        if name.contains("qwen") {
-            return ("Q", [.purple, .blue])
-        } else if name.contains("gemma") {
-            return ("G", [.blue, .cyan])
-        } else if name.contains("llama") {
-            return ("L", [.orange, .red])
-        } else if name.contains("mistral") {
-            return ("M", [.indigo, .purple])
-        } else {
-            return ("AI", [.blue, .green])
-        }
-    }
-    
-    @ViewBuilder
-    private func modelStatusBadge(for model: LocalModel) -> some View {
-        switch model.downloadState {
-        case .downloaded:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .downloading(let progress):
-            HStack(spacing: 4) {
-                ProgressView()
-                    .scaleEffect(0.6)
-                Text("\(Int(progress * 100))%")
-                    .font(.caption2)
-                    .foregroundStyle(.blue)
-            }
-        case .notDownloaded:
-            Text("Available")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+
+    private var downloadedModelsSummary: String {
+        switch localModelManager.downloadedModels.count {
+        case 0: return "Download a model to chat offline"
+        case 1: return "1 model downloaded"
+        case let count: return "\(count) models downloaded"
         }
     }
     

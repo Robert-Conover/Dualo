@@ -24,7 +24,6 @@ struct ModelSelectorMenu: View {
             label
         }
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1.0)
     }
 
     @ViewBuilder
@@ -77,19 +76,17 @@ struct ModelSelectorMenu: View {
     private var label: some View {
         HStack(spacing: 6) {
             Image(systemName: ModelUtilities.icon(for: currentProvider))
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
 
             Text(modelDisplayName(for: currentModel))
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .lineLimit(1)
 
             Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
         }
         .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(in: .capsule)
+        .padding(.horizontal, 6)
     }
 
     private func modelDisplayName(for model: String) -> String {

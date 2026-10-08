@@ -24,6 +24,8 @@ struct ChatInputBar: View {
     let currentProvider: APIProvider
     let onSendMessage: () -> Void
 
+    @StateObject private var voiceInput = VoiceInputController()
+
     var body: some View {
         VStack(spacing: 0) {
             // Live streaming stats (for local models while generating)
@@ -34,8 +36,8 @@ struct ChatInputBar: View {
             else if showGenerationStats, let stats = ggufService.lastGenerationStats, currentProvider == .local {
                 generationStatsSection(stats: stats)
             }
-            // Context usage indicator (when not streaming/showing stats but has messages)
-            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 {
+            // Context usage, once the chat is close enough to the limit to matter
+            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 && contextTracker.usageInfo.isNearLimit {
                 contextUsageSection
             }
 
@@ -49,10 +51,6 @@ struct ChatInputBar: View {
             // Input field and send button
             inputSection
         }
-        .background(Color.theme.chatBackground.opacity(0.95))
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 0)
-        }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
     }
@@ -60,43 +58,36 @@ struct ChatInputBar: View {
     // MARK: - Subviews
 
     private var streamingIndicatorSection: some View {
-        HStack {
-            LocalModelStreamingIndicator(
-                tokenCount: ggufService.currentTokenCount,
-                startTime: ggufService.generationStartTime
-            )
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(Color(.secondarySystemGroupedBackground).opacity(0.95))
+        LocalModelStreamingIndicator(
+            tokenCount: ggufService.currentTokenCount,
+            startTime: ggufService.generationStartTime
+        )
+        .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func generationStatsSection(stats: GenerationStats) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.green)
 
             Text("\(stats.tokenCount) tokens")
-                .font(.system(size: 12, weight: .medium))
+                .font(.caption.weight(.medium))
 
             Text("•")
                 .foregroundStyle(Color(.tertiaryLabel))
 
             Text(stats.formattedDuration)
-                .font(.system(size: 12))
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
             Text("•")
                 .foregroundStyle(Color(.tertiaryLabel))
 
             Text(stats.formattedSpeed)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.green)
-
-            Spacer()
 
             // Context usage indicator (compact, in stats banner)
             ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .compact)
@@ -107,20 +98,20 @@ struct ChatInputBar: View {
                 }
             }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground))
+        .glassEffect(in: .capsule)
+        .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var contextUsageSection: some View {
         ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .full)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+            .padding(.top, 8)
             .transition(.opacity)
     }
 
@@ -135,9 +126,9 @@ struct ChatInputBar: View {
                         showAttachmentOptions = true
                     }) {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.callout.weight(.medium))
                             .foregroundStyle(.blue)
-                            .frame(width: 24, height: 24)
+                            .frame(minWidth: 24, minHeight: 24)
                     }
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .accessibilityLabel("Add Attachment")
@@ -154,9 +145,17 @@ struct ChatInputBar: View {
                     .disabled(viewModel.isLoading || viewModel.isStreaming)
                     .onSubmit {
                         if canSendMessage && !viewModel.isStreaming {
-                            onSendMessage()
+                            send()
                         }
                     }
+
+                VoiceInputButton(
+                    voiceInput: voiceInput,
+                    text: $messageText,
+                    isInputFocused: $isInputFocused,
+                    identifierPrefix: "chat"
+                )
+                .disabled(viewModel.isLoading || viewModel.isStreaming)
 
                 // Embedded send button
                 Button(action: {
@@ -165,17 +164,17 @@ struct ChatInputBar: View {
                     if viewModel.isStreaming {
                         viewModel.stopStreaming()
                     } else {
-                        onSendMessage()
+                        send()
                     }
                 }) {
-                    Image(systemName: viewModel.isStreaming ? "stop.fill" : "arrow.up.circle.fill")
-                        .font(.system(size: 24, weight: .medium))
+                    Image(systemName: viewModel.isStreaming ? "stop.circle.fill" : "arrow.up.circle.fill")
+                        .font(.title2.weight(.medium))
                         .foregroundStyle(
-                            viewModel.isStreaming ? .red :
+                            viewModel.isStreaming ? Color.primary :
                             canSendMessage ? .blue : .secondary
                         )
                         .scaleEffect(canSendMessage || viewModel.isStreaming ? 1.0 : 0.8)
-                        .rotationEffect(.degrees(viewModel.isStreaming ? 90 : 0))
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .disabled(!canSendMessage && !viewModel.isStreaming)
                 .accessibilityLabel(viewModel.isStreaming ? "Stop" : "Send")
@@ -188,10 +187,16 @@ struct ChatInputBar: View {
             .glassEffect(in: .rect(cornerRadius: 22))
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Helpers
+
+    private func send() {
+        // Send what's been heard so far; later results mustn't refill the cleared composer
+        voiceInput.cancel()
+        onSendMessage()
+    }
 
     private var canSendMessage: Bool {
         let hasText = !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
