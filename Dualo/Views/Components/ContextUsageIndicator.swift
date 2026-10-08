@@ -91,14 +91,7 @@ struct ContextUsageIndicator: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(progressColor.opacity(usageInfo.isNearLimit ? 0.3 : 0.1), lineWidth: 1)
-                )
-        )
+        .glassEffect(in: .capsule)
     }
 
     // MARK: - Compact Indicator

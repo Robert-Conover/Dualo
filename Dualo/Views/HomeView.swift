@@ -89,17 +89,13 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .navigationBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     settingsButton
                     conversationsButton
                 }
                 
                 ToolbarItem(placement: .principal) {
                     modelSelector
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    newChatButton
                 }
             }
             .gesture(
@@ -122,7 +118,6 @@ struct HomeView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(Color.theme.sheetBackground)
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -167,34 +162,19 @@ struct HomeView: View {
     
     // MARK: - Top Navigation Bar
     
+    // Plain buttons: the toolbar draws their glass
     private var settingsButton: some View {
-        Button(action: {
+        Button("Settings", systemImage: "gearshape") {
             HapticFeedback.light()
             showSettings = true
-        }) {
-            Image(systemName: "gearshape")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Settings")
         }
-        .buttonStyle(.plain)
     }
     
     private var conversationsButton: some View {
-        Button(action: {
+        Button("Conversations", systemImage: "bubble.left") {
             HapticFeedback.light()
             showConversations = true
-        }) {
-            Image(systemName: "bubble.left")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Conversations")
         }
-        .buttonStyle(.plain)
     }
     
     // MARK: - Model Selector with Native Menu
@@ -264,35 +244,9 @@ struct HomeView: View {
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(in: .capsule)
+            .padding(.horizontal, 6)
         }
         .disabled(isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty))
-        .opacity((isModelSwitchingDisabled || (viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty)) ? 0.5 : 1)
-    }
-    
-    // MARK: - New Chat Button with Glass Effect (matched sizing to toolbar)
-    
-    @ViewBuilder
-    private var newChatButton: some View {
-        Button(action: {
-            HapticFeedback.medium()
-            
-            let newConversation = conversationManager.createNewConversation()
-            selectedConversation = newConversation
-        }) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("New chat")
-        }
-        .buttonStyle(.plain)
-        .disabled(true)
-        .opacity(0.5)
-        .accessibilityHint("Disabled on Home because you are already starting a new chat")
     }
     
     // MARK: - Welcome Content
@@ -448,7 +402,6 @@ struct HomeView: View {
                             .font(.system(size: 28, weight: .medium))
                             .foregroundStyle(canSendMessage ? .blue : .secondary.opacity(0.5))
                             .scaleEffect(canSendMessage ? 1.0 : 0.8)
-                            .rotationEffect(.degrees(canSendMessage ? 0 : -90))
                     }
                     .disabled(!canSendMessage)
                     .accessibilityLabel("Send")

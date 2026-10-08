@@ -205,7 +205,7 @@ final class ChatFlowUITests: XCTestCase {
         let conversations = app.buttons["Conversations"]
         XCTAssertTrue(conversations.waitForExistence(timeout: 10), "Conversations button not found")
         conversations.tap()
-        let search = element("conversationSearchField")
+        let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 5), "Search field not found")
         search.tap()
         search.typeText("Zebracorn")
@@ -215,7 +215,7 @@ final class ChatFlowUITests: XCTestCase {
         XCTAssertTrue(snippet.label.contains("zebracorn"), "Snippet: \(snippet.label)")
 
         search.typeText("xyz")
-        XCTAssertTrue(text(containing: "No results").waitForExistence(timeout: 5), "No-results message missing")
+        XCTAssertTrue(text(containing: "No Results").waitForExistence(timeout: 5), "No-results message missing")
     }
 
     func testDictatedMessageCanBeSent() {

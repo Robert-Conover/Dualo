@@ -24,7 +24,6 @@ struct ModelSelectorMenu: View {
             label
         }
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1.0)
     }
 
     @ViewBuilder
@@ -87,9 +86,7 @@ struct ModelSelectorMenu: View {
                 .font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(.primary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(in: .capsule)
+        .padding(.horizontal, 6)
     }
 
     private func modelDisplayName(for model: String) -> String {

@@ -70,11 +70,10 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) {
                         dismiss()
                     }
-                    .fontWeight(.semibold)
                 }
             }
             .onAppear {

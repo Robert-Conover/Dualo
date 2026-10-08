@@ -87,9 +87,6 @@ struct ThemeColors {
             endPoint: .bottomTrailing
         )
     }
-    
-    /// Sheet background - uses system color for Light/Dark mode adaptation
-    let sheetBackground = Color(.systemGroupedBackground)
 }
 
 // MARK: - Convenience Extensions

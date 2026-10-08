@@ -25,12 +25,7 @@ struct ChatOptionsMenu: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 17, weight: .medium))
-                .frame(width: 20, height: 20)
-                .padding(10)
-                .glassEffect(in: .circle)
-                .accessibilityLabel("Options")
+            Label("Options", systemImage: "ellipsis")
         }
         .disabled(isDisabled)
     }

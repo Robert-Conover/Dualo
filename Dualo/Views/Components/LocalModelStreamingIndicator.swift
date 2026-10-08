@@ -55,14 +55,7 @@ struct LocalModelStreamingIndicator: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-                .overlay(
-                    Capsule()
-                        .stroke(Color.green.opacity(0.2), lineWidth: 1)
-                )
-        )
+        .glassEffect(in: .capsule)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
                 isPulsing = true

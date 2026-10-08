@@ -36,8 +36,8 @@ struct ChatInputBar: View {
             else if showGenerationStats, let stats = ggufService.lastGenerationStats, currentProvider == .local {
                 generationStatsSection(stats: stats)
             }
-            // Context usage indicator (when not streaming/showing stats but has messages)
-            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 {
+            // Context usage, once the chat is close enough to the limit to matter
+            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 && contextTracker.usageInfo.isNearLimit {
                 contextUsageSection
             }
 
@@ -51,10 +51,6 @@ struct ChatInputBar: View {
             // Input field and send button
             inputSection
         }
-        .background(Color.theme.chatBackground.opacity(0.95))
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 0)
-        }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
     }
@@ -62,16 +58,11 @@ struct ChatInputBar: View {
     // MARK: - Subviews
 
     private var streamingIndicatorSection: some View {
-        HStack {
-            LocalModelStreamingIndicator(
-                tokenCount: ggufService.currentTokenCount,
-                startTime: ggufService.generationStartTime
-            )
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(Color(.secondarySystemGroupedBackground).opacity(0.95))
+        LocalModelStreamingIndicator(
+            tokenCount: ggufService.currentTokenCount,
+            startTime: ggufService.generationStartTime
+        )
+        .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
@@ -98,8 +89,6 @@ struct ChatInputBar: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.green)
 
-            Spacer()
-
             // Context usage indicator (compact, in stats banner)
             ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .compact)
 
@@ -113,16 +102,16 @@ struct ChatInputBar: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground))
+        .glassEffect(in: .capsule)
+        .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var contextUsageSection: some View {
         ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .full)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+            .padding(.top, 8)
             .transition(.opacity)
     }
 
@@ -198,7 +187,7 @@ struct ChatInputBar: View {
             .glassEffect(in: .rect(cornerRadius: 22))
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Helpers

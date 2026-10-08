@@ -76,6 +76,10 @@ Cloud providers use true SSE streaming with `URLSession.bytes(for:)`. Local mode
 
 The mic button in both composers (`VoiceInputButton`) dictates with the Speech framework's `SpeechAnalyzer` and a `DictationTranscriber`, entirely on device. `SpeechAnalyzerTranscriber` feeds it microphone audio converted with `AVAudioConverter` (`AnalyzerInputConverter` is iOS 27 only), and `VoiceInputController` merges its partial and final results into a transcript that's added after any typed text. Sending cancels dictation so late results can't refill the cleared composer. Under `-UITestStubAPI`, `StubVoiceTranscriber` stands in for the microphone.
 
+### UI
+
+The app uses iOS 26's Liquid Glass through the native APIs wherever they exist. Toolbar items are plain buttons and menus, because the toolbar draws their glass (adding `.glassEffect` inside one draws a second layer). Sheets use a navigation bar with `Button(role: .close)`, `.searchable` and `ContentUnavailableView`, on the system sheet background. The chat composer is a `safeAreaBar`, so messages scroll under it. Keep `.glassEffect` for custom floating pieces like the composers and status pills, and `.buttonStyle(.glass)` for standalone buttons.
+
 ### Constants
 
 All magic numbers and strings live in `Constants.swift` via `AppConstants` and `StringConstants` enums.

@@ -26,27 +26,33 @@ struct ConversationsSheetView: View {
     var body: some View {
         NavigationStack {
             let searchResults = ConversationSearch.search(conversationManager.conversations, for: searchText)
-            VStack(spacing: 0) {
-                // Header
-                headerView
-
-                if !conversationManager.conversations.isEmpty {
-                    searchBar
-                }
-
+            Group {
                 if conversationManager.isLoading {
-                    loadingView
+                    ProgressView("Loading Conversations…")
                 } else if conversationManager.conversations.isEmpty {
-                    emptyStateView
+                    ContentUnavailableView(
+                        "No Conversations",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Chats you start from the home screen show up here.")
+                    )
                 } else if searchResults.isEmpty {
-                    noResultsView
+                    ContentUnavailableView.search(text: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
                 } else {
-                    // Conversations list
                     conversationsList(searchResults)
                 }
             }
-            .background(Color.theme.sheetBackground)
-            .navigationBarHidden(true)
+            .navigationTitle("Conversations")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) {
+                        HapticFeedback.light()
+                        isPresented = false
+                    }
+                }
+            }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search chats")
+            .autocorrectionDisabled()
         }
         .alert("Delete Conversation", isPresented: $showingDeleteAlert) {
             Button("Delete", role: .destructive) {
@@ -79,95 +85,6 @@ struct ConversationsSheetView: View {
         } message: {
             Text("Enter a new name for this conversation")
         }
-    }
-    
-    // MARK: - Header
-    
-    private var headerView: some View {
-        HStack {
-            Spacer()
-            
-            Text("Conversations")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.primary)
-            
-            Spacer()
-        }
-        .overlay(alignment: .trailing) {
-            Button(action: {
-                HapticFeedback.light()
-                isPresented = false
-            }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 30, height: 30)
-            }
-            .tint(.primary)
-            .glassEffect(in: .circle)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-    }
-    
-    // MARK: - Loading State
-    
-    private var loadingView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            ProgressView()
-                .scaleEffect(1.2)
-            
-            Text("Loading conversations...")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
-    // MARK: - Empty State
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 48, weight: .thin))
-                .foregroundStyle(.secondary.opacity(0.6))
-            
-            Text("No conversations yet")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-            
-            Text("Start a new chat from the home screen")
-                .font(.system(size: 14))
-                .foregroundStyle(.tertiary)
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var noResultsView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 40, weight: .thin))
-                .foregroundStyle(.secondary.opacity(0.6))
-
-            Text("No results for \u{201C}\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Spacer()
-        }
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Conversations List
@@ -247,7 +164,6 @@ struct ConversationsSheetView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.immediately)
     }
 
@@ -302,41 +218,6 @@ struct ConversationsSheetView: View {
             // Local models are stored by id ("qwen3.5-0.8b-q4"); show their name ("Qwen3.5 0.8B")
             return LocalModelCatalog.model(withId: model)?.displayName ?? model
         }
-    }
-    
-    // MARK: - Search Bar
-    
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            TextField("Search chats", text: $searchText)
-                .font(.body)
-                .tint(.accentColor)
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                .submitLabel(.search)
-                .accessibilityIdentifier("conversationSearchField")
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-        .glassEffect(in: .capsule)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
     }
 }
 
