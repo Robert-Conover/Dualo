@@ -38,6 +38,8 @@ enum GGUFServiceError: LocalizedError {
 // MARK: - Generation Statistics
 
 struct GenerationStats {
+    /// The chat the reply was for, so other chats don't show its stats
+    let conversationId: UUID
     let tokenCount: Int
     let durationSeconds: Double
     let tokensPerSecond: Double
@@ -327,6 +329,7 @@ class GGUFService: ObservableObject {
                     let duration = Date().timeIntervalSince(startTime)
                     let tokensPerSecond = duration > 0 ? Double(self.currentTokenCount) / duration : 0
                     self.lastGenerationStats = GenerationStats(
+                        conversationId: conversationId,
                         tokenCount: self.currentTokenCount,
                         durationSeconds: duration,
                         tokensPerSecond: tokensPerSecond

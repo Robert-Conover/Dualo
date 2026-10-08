@@ -19,22 +19,24 @@ struct ChatInputBar: View {
     @Binding var pendingAttachments: [ImageAttachment]
     @Binding var showPhotoPicker: Bool
     @Binding var showCamera: Bool
-    @Binding var showGenerationStats: Bool
     @FocusState.Binding var isInputFocused: Bool
 
+    let conversationId: UUID
     let currentProvider: APIProvider
     let onSendMessage: () -> Void
 
     @StateObject private var voiceInput = VoiceInputController()
+    @AppStorage(AppConstants.LocalModels.showGenerationStatsKey) private var showGenerationStats = true
 
     var body: some View {
         VStack(spacing: 0) {
             // Live streaming stats (for local models while generating)
-            if viewModel.isStreaming && currentProvider == .local && ggufService.isGenerating {
+            if showsGenerationStats && viewModel.isStreaming && ggufService.isGenerating {
                 streamingIndicatorSection
             }
-            // Post-generation stats banner (for local models after completion)
-            else if showGenerationStats, let stats = ggufService.lastGenerationStats, currentProvider == .local {
+            // Stats for this chat's last reply, shown until the next one starts
+            else if showsGenerationStats, let stats = ggufService.lastGenerationStats,
+                    stats.conversationId == conversationId, !viewModel.messages.isEmpty {
                 generationStatsSection(stats: stats)
             }
             // Context usage, once the chat is close enough to the limit to matter
@@ -56,7 +58,6 @@ struct ChatInputBar: View {
             // Input field and send button
             inputSection
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showGenerationStats)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.isStreaming)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.editingMessageId)
     }
@@ -97,20 +98,12 @@ struct ChatInputBar: View {
 
             // Context usage indicator (compact, in stats banner)
             ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .compact)
-
-            Button(action: {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    showGenerationStats = false
-                }
-            }) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .glassEffect(in: .capsule)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("generationStats")
         .padding(.top, 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -210,6 +203,11 @@ struct ChatInputBar: View {
     }
 
     // MARK: - Helpers
+
+    /// Generation stats are on in Settings and this chat runs on a local model
+    private var showsGenerationStats: Bool {
+        showGenerationStats && currentProvider == .local
+    }
 
     private func send() {
         // Send what's been heard so far; later results mustn't refill the cleared composer

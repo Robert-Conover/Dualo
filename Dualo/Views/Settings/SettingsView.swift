@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var apiKeyValidationError: String?
     @AppStorage(CustomInstructions.key) private var customInstructions = ""
+    @AppStorage(AppConstants.LocalModels.showGenerationStatsKey) private var showGenerationStats = true
 
     // App version from bundle
     private var appVersion: String {
@@ -106,6 +107,17 @@ struct SettingsView: View {
                 )
             }
             .accessibilityIdentifier("localModelsRow")
+
+            Toggle(isOn: $showGenerationStats) {
+                SettingsRow(
+                    icon: "speedometer",
+                    title: "Generation Stats",
+                    color: .blue,
+                    subtitle: "Tokens, speed and context use",
+                    showChevron: false
+                )
+            }
+            .accessibilityIdentifier("generationStatsToggle")
         } header: {
             Text("On-Device Models")
         } footer: {

@@ -77,6 +77,8 @@ enum AppConstants {
         // UserDefaults keys
         static let downloadedModelsKey = "DownloadedLocalModels"
         static let selectedLocalModelKey = "SelectedLocalModel"
+        /// Whether chats on a local model show the generation stats above the composer
+        static let showGenerationStatsKey = "ShowGenerationStats"
 
         // Model loading
         static let defaultTemperature: Float = 0.7

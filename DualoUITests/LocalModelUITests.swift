@@ -22,6 +22,12 @@ final class LocalModelUITests: XCTestCase {
         app.launch()
     }
 
+    private func relaunch(with arguments: [String]) {
+        app.terminate()
+        app.launchArguments = ["-UITestStubAPI", "-\(customInstructionsKey)", ""] + arguments
+        app.launch()
+    }
+
     override func tearDownWithError() throws {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.lifetime = .keepAlways
@@ -97,9 +103,7 @@ final class LocalModelUITests: XCTestCase {
     }
 
     func testLocalModelFollowsCustomInstructions() throws {
-        app.terminate()
-        app.launchArguments = ["-UITestStubAPI", "-\(customInstructionsKey)", "Your name is Zorblax."]
-        app.launch()
+        relaunch(with: ["-\(customInstructionsKey)", "Your name is Zorblax."])
         try openChatOnLocalModel()
 
         send("What is your name? Answer in one word.")
@@ -111,6 +115,38 @@ final class LocalModelUITests: XCTestCase {
 
     /// Matches `CustomInstructions.key` in the app
     private let customInstructionsKey = "CustomInstructions"
+
+    /// Matches `AppConstants.LocalModels.showGenerationStatsKey` in the app
+    private let showGenerationStatsKey = "ShowGenerationStats"
+
+    func testGenerationStatsStayAfterReply() throws {
+        relaunch(with: ["-\(showGenerationStatsKey)", "YES"])
+        try openChatOnLocalModel()
+
+        send("Reply with only the word: pineapple")
+        waitForLabel("Send", on: sendButton, timeout: 90)
+
+        let stats = element("generationStats")
+        XCTAssertTrue(stats.waitForExistence(timeout: 5), "Stats didn't appear after the reply")
+        XCTAssertTrue(stats.label.contains("tok/s"), "Stats are missing the speed: \(stats.label)")
+        sleep(10) // Longer than the stats used to stay up for
+        XCTAssertTrue(stats.exists, "Stats hid themselves")
+    }
+
+    func testGenerationStatsHiddenWhenSwitchedOff() throws {
+        relaunch(with: ["-\(showGenerationStatsKey)", "NO"])
+        try openChatOnLocalModel()
+
+        send("Reply with only the word: pineapple")
+        // The live counter would show while the reply streams
+        waitForLabel("Stop", on: sendButton, timeout: 10)
+        XCTAssertFalse(element("generationStats").exists)
+        XCTAssertFalse(app.staticTexts["tokens"].exists, "Live token counter showed while switched off")
+        waitForLabel("Send", on: sendButton, timeout: 90)
+
+        sleep(2)
+        XCTAssertFalse(element("generationStats").exists, "Stats showed while switched off")
+    }
 
     func testLocalModelChatHasNoAttachButton() throws {
         try openChatOnLocalModel()
