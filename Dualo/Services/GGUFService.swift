@@ -424,6 +424,13 @@ class GGUFService: ObservableObject {
     }
     
     /// Stop the current generation
+    /// Makes the loaded model always pick its most likely next token, so the same
+    /// prompts get the same replies. Tests use it so a lucky or unlucky draw can't decide
+    /// whether they pass; the app keeps sampling.
+    func useGreedySampling() {
+        llm?.temp = 0
+    }
+
     func stopGeneration() {
         currentGenerationTask?.cancel()
         currentGenerationTask = nil

@@ -16,7 +16,9 @@ final class LocalModelUITests: XCTestCase {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait // The taps and swipes assume portrait
         app = XCUIApplication()
-        app.launchArguments = ["-UITestStubAPI"]
+        // Launch arguments land in UserDefaults for this launch only, so this switches off
+        // any instructions left saved by an interrupted CustomInstructionsUITests run
+        app.launchArguments = ["-UITestStubAPI", "-\(customInstructionsKey)", ""]
         app.launch()
     }
 
@@ -95,9 +97,8 @@ final class LocalModelUITests: XCTestCase {
     }
 
     func testLocalModelFollowsCustomInstructions() throws {
-        // Launch arguments land in UserDefaults for this launch only, so nothing is saved
         app.terminate()
-        app.launchArguments += ["-\(customInstructionsKey)", "Your name is Zorblax."]
+        app.launchArguments = ["-UITestStubAPI", "-\(customInstructionsKey)", "Your name is Zorblax."]
         app.launch()
         try openChatOnLocalModel()
 
