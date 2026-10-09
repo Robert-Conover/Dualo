@@ -113,7 +113,12 @@ class GGUFService: ObservableObject {
     /// Track which conversation the LLM is currently serving
     /// When this changes, we need to reset context for the new conversation
     private var currentConversationId: UUID?
-    
+    /// Where the model's memory of that chat started at its last reply
+    private var currentLastForgottenId: UUID?
+    /// The chat whose saved memory matches what the model holds now, so it isn't saved again
+    private var savedConversationId: UUID?
+    private let chatMemoryStore = ChatMemoryStore.shared
+
     // MARK: - Initialization
     
     private init() {}
@@ -239,6 +244,8 @@ class GGUFService: ObservableObject {
         isModelLoaded = false
         loadedModelId = nil
         currentConversationId = nil
+        currentLastForgottenId = nil
+        savedConversationId = nil
         memory = nil
         Logger.inference.info("GGUF model unloaded")
     }
@@ -281,6 +288,10 @@ class GGUFService: ObservableObject {
                 return
             }
 
+            if isNewConversation {
+                await self.switchChat(to: conversationId, llm: llm)
+            }
+
             // Update UI state and track current conversation
             await MainActor.run {
                 self.isGenerating = true
@@ -288,20 +299,18 @@ class GGUFService: ObservableObject {
                 self.generationStartTime = Date()
                 self.lastGenerationStats = nil
                 self.currentConversationId = conversationId
+                self.currentLastForgottenId = plan.memory.lastForgottenMessageId
+                self.savedConversationId = nil
                 self.memory = plan.memory
             }
 
             Self.apply(systemPrompt, to: llm)
 
-            if isNewConversation {
-                // Conversation changed - clear the KV cache
-                Logger.inference.debug("Conversation changed, resetting context")
-                llm.reset()
-            }
             // The app's copy of the chat is the one the model sees, so edits and removed turns
             // carry over. LLM.swift reuses the KV cache for however much of the prompt still
             // matches, which within a chat is everything before the new message (for Qwen3.5,
-            // from a checkpoint at the end of the last one).
+            // from a checkpoint at the end of the last one), and after switching chats, whatever
+            // was saved of the chat.
             llm.history = plan.history
             Logger.inference.debug("Remembering \(plan.history.count) of \(entries.count) messages")
 
@@ -391,13 +400,57 @@ class GGUFService: ObservableObject {
         memory = plan.memory
     }
 
-    /// Clear the current conversation context
-    /// Call this when starting a brand new conversation
+    /// Clear the current conversation context, saved memory included, so the chat's next
+    /// message is read from the start
     func clearConversationContext() {
         if isGenerating { stopGeneration() }
         llm?.reset()
+        if let currentConversationId { chatMemoryStore.remove(currentConversationId) }
         currentConversationId = nil
+        currentLastForgottenId = nil
+        savedConversationId = nil
         Logger.inference.debug("Conversation context cleared")
+    }
+
+    // MARK: - Saved Chat Memory
+
+    /// Saves what the model has read of the chat it's serving, so the chat picks up from there
+    /// after the app relaunches. Call when the app goes to the background.
+    func saveChatMemory() async {
+        let previousGeneration = lastGenerationTask
+        let task = Task {
+            await previousGeneration?.value
+            await self.saveCurrentChat()
+        }
+        lastGenerationTask = task
+        await task.value
+    }
+
+    /// Saves the chat the model was serving, then picks up the one it's switching to where it
+    /// was saved, or starts it from scratch
+    private func switchChat(to conversationId: UUID, llm: LLM) async {
+        await saveCurrentChat()
+        guard llm === self.llm, let loadedModelId else { return }
+        let directory = chatMemoryStore.directory(for: conversationId, modelId: loadedModelId)
+        if chatMemoryStore.hasMemory(for: conversationId, modelId: loadedModelId), await llm.loadSession(from: directory) {
+            Logger.inference.debug("Conversation changed, picking up its saved memory")
+        } else {
+            Logger.inference.debug("Conversation changed, resetting context")
+            llm.reset()
+        }
+    }
+
+    private func saveCurrentChat() async {
+        guard let llm, let loadedModelId, let conversationId = currentConversationId,
+              savedConversationId != conversationId,
+              let directory = chatMemoryStore.prepareDirectory(for: conversationId, modelId: loadedModelId) else { return }
+        let info = ChatMemoryStore.Info(lastForgottenMessageId: currentLastForgottenId)
+        if await llm.saveSession(to: directory) {
+            chatMemoryStore.finishSaving(info, in: directory)
+            savedConversationId = conversationId
+        } else {
+            chatMemoryStore.remove(conversationId)
+        }
     }
 
     /// A chat's messages as the model sees them, each with the id of the message it came from.
@@ -414,7 +467,10 @@ class GGUFService: ObservableObject {
 
     /// The newest message the model has already forgotten in this chat, if any
     private func lastForgottenMessageId(in conversationId: UUID) -> UUID? {
-        memory?.conversationId == conversationId ? memory?.lastForgottenMessageId : nil
+        if memory?.conversationId == conversationId { return memory?.lastForgottenMessageId }
+        if currentConversationId == conversationId { return currentLastForgottenId }
+        guard let loadedModelId else { return nil }
+        return chatMemoryStore.info(for: conversationId, modelId: loadedModelId)?.lastForgottenMessageId
     }
 
     /// The newest messages that fit in the model's context alongside the system prompt, the

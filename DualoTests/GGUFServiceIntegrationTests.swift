@@ -233,6 +233,55 @@ struct GGUFServiceIntegrationTests {
         #expect(readFromCache < readFromScratch / 2, "Read \(readFromCache) of \(readFromScratch) tokens")
     }
 
+    @Test func switchingBackToAChatReadsOnlyWhatsNew() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        _ = try await reply(to: "Say hi.", in: UUID())
+        let question = "What is my name? Answer in one word."
+
+        let fromSaved = try await reply(to: question, history: chat.messages, in: chat.id)
+        let readFromSaved = try await lastReadTokenCount()
+        service.clearConversationContext()
+        let fromScratch = try await reply(to: question, history: chat.messages, in: chat.id)
+
+        #expect(readFromSaved < 100, "Read \(readFromSaved) tokens")
+        #expect(fromSaved == fromScratch)
+        #expect(answer(fromSaved).contains("Zorblax"), "Reply: \(fromSaved)")
+    }
+
+    @Test func chatPicksUpWhereItLeftOffAfterTheAppRelaunches() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+
+        // Like the app going to the background, then being closed and opened again
+        await service.saveChatMemory()
+        service.unloadModel()
+        try await TestModel.load()
+        service.useGreedySampling()
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(try await lastReadTokenCount() < 100)
+        #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
+    @Test func fullChatKeepsWhereItStartsAfterSwitchingBack() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 30)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        let firstForgotten = try #require(service.memory?.lastForgottenMessageId)
+        _ = try await reply(to: "Say hi.", in: UUID())
+
+        // Opening the chat again shows the divider where it was
+        await service.refreshMemory(of: chat.messages, conversationId: chat.id)
+        #expect(service.memory?.lastForgottenMessageId == firstForgotten)
+        _ = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(service.memory?.lastForgottenMessageId == firstForgotten)
+        #expect(try await lastReadTokenCount() < 100)
+    }
+
     @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
         var chat = TestChat()
         _ = try await send("Say hi.", in: &chat)

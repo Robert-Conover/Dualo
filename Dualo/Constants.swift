@@ -87,6 +87,9 @@ enum AppConstants {
         // Full context (32K+) would use too much RAM for the KV cache
         // 4096 tokens is a balance for mobile devices
         static let maxMobileContextTokens = 4096
+
+        /// Chats whose model memory is kept on disk (up to about 80 MB each for Qwen3.5 0.8B)
+        static let maxSavedChatMemories = 3
     }
 }
 
