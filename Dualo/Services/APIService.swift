@@ -13,6 +13,8 @@ protocol APIServiceProtocol {
     func streamMessage(_ message: String, history: [Message], config: APIConfiguration, attachments: [MessageAttachment], conversationId: UUID?) -> AsyncThrowingStream<String, Error>
     func fetchAvailableModels(for provider: APIProvider, apiKey: String) async throws -> [String]
     func stopStreaming()
+    /// A short title for a chat that starts with `message`, or nil if the provider doesn't write one
+    func suggestTitle(forChatStartingWith message: String, config: APIConfiguration) async -> String?
 }
 
 @MainActor
@@ -104,6 +106,12 @@ class APIService: APIServiceProtocol {
         Task { @MainActor in
             GGUFService.shared.stopGeneration()
         }
+    }
+
+    /// Local models name their chats; cloud chats keep the title made from their first words
+    func suggestTitle(forChatStartingWith message: String, config: APIConfiguration) async -> String? {
+        guard config.provider == .local else { return nil }
+        return await GGUFService.shared.suggestTitle(forChatStartingWith: message)
     }
 
     func fetchAvailableModels(for provider: APIProvider, apiKey: String) async throws -> [String] {

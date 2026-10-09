@@ -53,12 +53,12 @@ final class LocalModelUITests: XCTestCase {
         sendButton.tap()
     }
 
-    /// Opens a chat (on the stubbed cloud model) and switches it to Qwen3.5 0.8B.
-    private func openChatOnLocalModel() throws {
+    /// Opens a chat with `firstMessage` (on the stubbed cloud model) and switches it to Qwen3.5 0.8B.
+    private func openChatOnLocalModel(firstMessage: String = "Hello") throws {
         let composer = element("homeComposer")
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         composer.tap()
-        composer.typeText("Hello")
+        composer.typeText(firstMessage)
         element("homeSendButton").tap()
         XCTAssertTrue(sendButton.waitForExistence(timeout: 10))
         waitForLabel("Send", on: sendButton, timeout: 20)
@@ -86,6 +86,22 @@ final class LocalModelUITests: XCTestCase {
         // One match is the question, the other the model's reply
         XCTAssertGreaterThanOrEqual(pineappleTexts.count, 2, "Local model's reply is missing")
         XCTAssertFalse(app.alerts.firstMatch.exists, "An error alert appeared")
+    }
+
+    func testLocalModelNamesTheChat() throws {
+        // The app first titles the chat "Can you help me", from its first words
+        try openChatOnLocalModel(firstMessage: "Can you help me plan a week in Japan?")
+
+        send("Reply with only the word: pineapple")
+        waitForLabel("Send", on: sendButton, timeout: 90)
+        app.buttons["Back"].firstMatch.tap()
+        let conversations = app.buttons["Conversations"]
+        XCTAssertTrue(conversations.waitForExistence(timeout: 10), "Conversations button not found")
+        conversations.tap()
+
+        // Only the title can mention Japan: the row's preview is the last reply
+        let title = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'Japan'")).firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "The model didn't name the chat")
     }
 
     func testStoppingLocalModelThenSendingAgain() throws {

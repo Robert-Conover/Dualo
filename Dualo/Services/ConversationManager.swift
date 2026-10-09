@@ -385,6 +385,7 @@ class ConversationManager: ObservableObject, ConversationManaging {
         let directory = conversationsDirectory
 
         fileQueue.async {
+            ChatMemoryStore.shared.remove(conversationId)
             let fileURL = directory.appendingPathComponent("\(conversationId.uuidString).json")
             do {
                 try FileManager.default.removeItem(at: fileURL)

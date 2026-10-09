@@ -361,6 +361,58 @@ public actor LLMCore {
         return checkpoint.tokenCount
     }
 
+    // MARK: Dualo patch: saved sessions
+
+    /// Saves what the model has read to `directory`, so `loadSession(from:)` can pick up from
+    /// there, even after the app relaunches. A recurrent/hybrid model first goes back to its
+    /// latest checkpoint, where the next prompt is read from, and the one before it is saved too.
+    /// Returns false when there's nothing worth saving.
+    public func saveSession(to directory: URL) -> Bool {
+        if llama_model_is_recurrent(model) || llama_model_is_hybrid(model) {
+            guard let latest = checkpoints.last, latest.tokenCount <= contextTokens.count else { return false }
+            guard let count = restoreCheckpoint(upTo: latest.tokenCount) else {
+                resetContext()
+                return false
+            }
+            contextTokens.removeSubrange(count..<contextTokens.count)
+            for checkpoint in checkpoints where checkpoint.tokenCount < count {
+                let url = directory.appending(path: "checkpoint-\(checkpoint.tokenCount).bin")
+                guard (try? Data(checkpoint.data).write(to: url)) != nil else { return false }
+            }
+        }
+        guard !contextTokens.isEmpty else { return false }
+        let path = directory.appending(path: "state.bin").path
+        return contextTokens.withUnsafeBufferPointer { tokens in
+            llama_state_seq_save_file(context, path, 0, tokens.baseAddress, tokens.count)
+        } > 0
+    }
+
+    /// Picks up what a model read before `saveSession(to:)`. Returns false, with nothing read,
+    /// when there's no saved session or it doesn't fit this model.
+    public func loadSession(from directory: URL) -> Bool {
+        resetContext()
+        let path = directory.appending(path: "state.bin").path
+        var tokens = [Token](repeating: 0, count: maxTokenCount)
+        var count = 0
+        guard FileManager.default.fileExists(atPath: path),
+              llama_state_seq_load_file(context, path, 0, &tokens, tokens.count, &count) > 0, count > 0 else {
+            resetContext()
+            return false
+        }
+        contextTokens = Array(tokens.prefix(count))
+        currentTokenCount = Int32(count)
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        checkpoints = Array(files.compactMap { url -> Checkpoint? in
+            let name = url.deletingPathExtension().lastPathComponent
+            guard name.hasPrefix("checkpoint-"), let tokenCount = Int(name.dropFirst("checkpoint-".count)),
+                  tokenCount < count, let data = try? Data(contentsOf: url) else { return nil }
+            return Checkpoint(tokenCount: tokenCount, data: [UInt8](data))
+        }
+        .sorted { $0.tokenCount < $1.tokenCount }
+        .suffix(maxCheckpoints))
+        return true
+    }
+
     private func clearBatch() {
         batch.n_tokens = 0
     }
@@ -1311,6 +1363,19 @@ open class LLM: ObservableObject {
     public func reset() {
         history.removeAll()
         configure { await self.core.resetContext() }
+    }
+
+    /// Dualo patch: saves what the model has read, after any pending reset (see `LLMCore.saveSession`)
+    public func saveSession(to directory: URL) async -> Bool {
+        await configuration?.value
+        return await core.saveSession(to: directory)
+    }
+
+    /// Dualo patch: picks up a session saved with `saveSession(to:)`, or returns false
+    public func loadSession(from directory: URL) async -> Bool {
+        history.removeAll()
+        await configuration?.value
+        return await core.loadSession(from: directory)
     }
     
     open func recoverFromLengthy(_ input: borrowing String, to output: borrowing AsyncStream<String>.Continuation) {

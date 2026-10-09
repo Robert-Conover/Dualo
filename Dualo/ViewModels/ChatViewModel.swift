@@ -47,6 +47,8 @@ class ChatViewModel: ObservableObject {
     
     /// Load of the chat's local model, so a message sent from HomeView can wait for it.
     private var localModelLoadTask: Task<Void, Error>?
+    /// Chats the model has been asked to name, so each is asked once
+    private var namedConversationIds: Set<UUID> = []
 
     private var currentConversation: Conversation? {
         guard let conversationId = currentConversationId else { return nil }
@@ -414,6 +416,7 @@ class ChatViewModel: ObservableObject {
                 // stopStreaming() has already saved the partial reply and reset state
                 guard !Task.isCancelled else { return }
                 finishStreaming()
+                nameChat(using: config)
             } catch {
                 if !Task.isCancelled {
                     handleStreamingError(error)
@@ -466,6 +469,24 @@ class ChatViewModel: ObservableObject {
         objectWillChange.send()
     }
     
+    /// Has a local model name the chat after a reply, while it still has the title the app
+    /// made from its first words. The title goes in only if nobody renames the chat meanwhile.
+    private func nameChat(using config: APIConfiguration) {
+        guard config.provider == .local, let conversation = currentConversation, conversation.hasPlaceholderTitle,
+              let firstMessage = conversation.messages.first(where: { $0.role == Message.Role.user }),
+              !firstMessage.content.isEmpty,
+              namedConversationIds.insert(conversation.id).inserted else { return }
+        let conversationId = conversation.id
+        Task {
+            guard let title = await apiService.suggestTitle(forChatStartingWith: firstMessage.content, config: config),
+                  var conversation = conversationManager.conversations.first(where: { $0.id == conversationId }),
+                  conversation.hasPlaceholderTitle else { return }
+            conversation.title = title
+            conversationManager.updateConversation(conversation, moveToTop: false)
+            objectWillChange.send()
+        }
+    }
+
     func stopStreaming() {
         Logger.chat.debug("Stopping stream - partial content length: \(self.streamingBuffer.count)")
         

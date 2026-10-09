@@ -233,6 +233,87 @@ struct GGUFServiceIntegrationTests {
         #expect(readFromCache < readFromScratch / 2, "Read \(readFromCache) of \(readFromScratch) tokens")
     }
 
+    @Test func switchingBackToAChatReadsOnlyWhatsNew() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        _ = try await reply(to: "Say hi.", in: UUID())
+        let question = "What is my name? Answer in one word."
+
+        let fromSaved = try await reply(to: question, history: chat.messages, in: chat.id)
+        let readFromSaved = try await lastReadTokenCount()
+        service.clearConversationContext()
+        let fromScratch = try await reply(to: question, history: chat.messages, in: chat.id)
+
+        #expect(readFromSaved < 100, "Read \(readFromSaved) tokens")
+        #expect(fromSaved == fromScratch)
+        #expect(answer(fromSaved).contains("Zorblax"), "Reply: \(fromSaved)")
+    }
+
+    @Test func chatPicksUpWhereItLeftOffAfterTheAppRelaunches() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+
+        // Like the app going to the background, then being closed and opened again
+        await service.saveChatMemory()
+        service.unloadModel()
+        try await TestModel.load()
+        service.useGreedySampling()
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(try await lastReadTokenCount() < 100)
+        #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
+    @Test func fullChatKeepsWhereItStartsAfterSwitchingBack() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 30)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        let firstForgotten = try #require(service.memory?.lastForgottenMessageId)
+        _ = try await reply(to: "Say hi.", in: UUID())
+
+        // Opening the chat again shows the divider where it was
+        await service.refreshMemory(of: chat.messages, conversationId: chat.id)
+        #expect(service.memory?.lastForgottenMessageId == firstForgotten)
+        _ = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(service.memory?.lastForgottenMessageId == firstForgotten)
+        #expect(try await lastReadTokenCount() < 100)
+    }
+
+    @Test(arguments: [
+        ("Can you help me plan a week in Japan?", ["Japan"]),
+        ("How do I reverse a string in Python?", ["Python"]),
+        ("Write me a short poem about the ocean.", ["Ocean"]),
+        ("What's the difference between a virus and bacteria?", ["Virus", "Bacteria"]),
+        ("Tell me a joke about cats.", ["Cat"]),
+    ])
+    func modelNamesAChat(message: String, topics: [String]) async throws {
+        let title = try #require(await service.suggestTitle(forChatStartingWith: message))
+        print("[GGUF test] Title for \(message) -> \(title)")
+
+        #expect(topics.contains { title.localizedCaseInsensitiveContains($0) }, "Title: \(title)")
+    }
+
+    @Test func namingAChatDoesntMakeItsNextMessageReadMore() async throws {
+        func readForSecondMessage(naming: Bool) async throws -> Int {
+            var chat = TestChat()
+            _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+            if naming {
+                _ = try #require(await service.suggestTitle(forChatStartingWith: chat.messages[0].content))
+            }
+            let reply = try await send("What is my name? Answer in one word.", in: &chat)
+            #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+            return try await lastReadTokenCount()
+        }
+
+        let named = try await readForSecondMessage(naming: true)
+        let unnamed = try await readForSecondMessage(naming: false)
+
+        #expect(named == unnamed, "Read \(named) tokens after naming, \(unnamed) without")
+    }
+
     @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
         var chat = TestChat()
         _ = try await send("Say hi.", in: &chat)

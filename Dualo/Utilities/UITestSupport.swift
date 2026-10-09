@@ -88,6 +88,10 @@ final class StubAPIService: APIServiceProtocol {
     func stopStreaming() {
         APIService.shared.stopStreaming()
     }
+
+    func suggestTitle(forChatStartingWith message: String, config: APIConfiguration) async -> String? {
+        await APIService.shared.suggestTitle(forChatStartingWith: message, config: config)
+    }
 }
 
 /// "Hears" a fixed phrase, a few words at a time, then waits to be stopped.
