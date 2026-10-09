@@ -19,7 +19,9 @@ struct ContextUsageIndicator: View {
     }
 
     private var progressColor: Color {
-        if usageInfo.isAtLimit {
+        if usageInfo.forgetsMessages {
+            return .orange // Expected in a long chat, not an error
+        } else if usageInfo.isAtLimit {
             return .red
         } else if usageInfo.isNearLimit {
             return .orange
@@ -29,7 +31,9 @@ struct ContextUsageIndicator: View {
     }
 
     private var statusIcon: String {
-        if usageInfo.isAtLimit {
+        if usageInfo.forgetsMessages {
+            return "clock.arrow.circlepath"
+        } else if usageInfo.isAtLimit {
             return "exclamationmark.triangle.fill"
         } else if usageInfo.isNearLimit {
             return "exclamationmark.circle.fill"
@@ -59,7 +63,7 @@ struct ContextUsageIndicator: View {
             // Progress bar with text
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text("Context")
+                    Text(usageInfo.forgetsMessages ? "Forgetting oldest" : "Context")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
 

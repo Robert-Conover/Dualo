@@ -16,7 +16,9 @@ struct ContextUsageInfo {
     let contextLimit: Int
     let provider: APIProvider
     let modelName: String
-    
+    /// A local model's context is full and the chat's oldest messages no longer fit
+    var forgetsMessages = false
+
     var usagePercentage: Double {
         guard contextLimit > 0 else { return 0 }
         return min(Double(estimatedTokens) / Double(contextLimit) * 100, 100)

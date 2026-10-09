@@ -106,6 +106,8 @@ public actor LLMCore {
     private var shouldContinuePredicting = false
     private var currentTokenCount: Int32 = 0
     private var contextTokens: [Token] = []
+    /// Dualo patch: tokens the last prompt had to read; the rest came from the cache
+    public private(set) var lastReadTokenCount = 0
     private var debugLastGeneratedTokens: [Token] = []
 
     private var sampler: UnsafeMutablePointer<llama_sampler>?
@@ -267,27 +269,98 @@ public actor LLMCore {
         if reusableCount == tokens.count { reusableCount -= 1 }
         if reusableCount < contextTokens.count {
             // Dualo patch: recurrent/hybrid models (e.g. Qwen3.5) can only roll back a few tokens.
-            // When trimming fails, start over instead of decoding on top of state that's still there.
+            // When trimming fails, go back to the latest checkpoint that's still part of the prompt,
+            // or start over instead of decoding on top of state that's still there.
             if !llama_memory_seq_rm(llama_get_memory(context), 0, Int32(reusableCount), -1) {
-                llama_memory_clear(llama_get_memory(context), false)
-                reusableCount = 0
+                if let restoredCount = restoreCheckpoint(upTo: reusableCount) {
+                    reusableCount = restoredCount
+                } else {
+                    llama_memory_clear(llama_get_memory(context), false)
+                    reusableCount = 0
+                }
             }
             contextTokens.removeSubrange(reusableCount..<contextTokens.count)
         }
+        checkpoints.removeAll { $0.tokenCount > reusableCount }
 
-        let newTokens = Array(tokens[reusableCount...])
-        clearBatch()
-        for (i, token) in newTokens.enumerated() {
-            addToBatch(token: token, pos: Int32(reusableCount + i), isLogit: i == newTokens.count - 1)
+        // Dualo patch: read up to the end of each of the last turns separately, saving the state
+        // there, so the next prompt can pick up from one even where it differs from this one's end
+        var start = reusableCount
+        for end in checkpointPositions(in: tokens, after: reusableCount) + [tokens.count] {
+            clearBatch()
+            for i in start..<end {
+                addToBatch(token: tokens[i], pos: Int32(i), isLogit: i == tokens.count - 1)
+            }
+            guard llama_decode(context, batch) == 0 else {
+                resetContext()
+                return false
+            }
+            if end < tokens.count { saveCheckpoint(tokenCount: end) }
+            start = end
         }
-        guard llama_decode(context, batch) == 0 else { return false }
 
+        lastReadTokenCount = tokens.count - reusableCount
         contextTokens = tokens
         currentTokenCount = Int32(tokens.count)
         shouldContinuePredicting = true
         return true
     }
     
+    // MARK: Dualo patch: checkpoints
+
+    /// The state of a recurrent/hybrid model's memory after reading the first `tokenCount`
+    /// tokens of the context. These models can't trim their memory back to an earlier point,
+    /// so without one, any prompt that differs from the last one before its end is read from the
+    /// start. Qwen3.5's does every time: its template renders a past reply without the empty
+    /// thinking block its generation prompt had. Only the recurrent part is saved; the
+    /// attention cache trims as usual.
+    private struct Checkpoint {
+        let tokenCount: Int
+        let data: [UInt8]
+    }
+
+    private var checkpoints: [Checkpoint] = []
+    /// About 20 MB each for Qwen3.5 0.8B; the start and end of the newest message are enough
+    private let maxCheckpoints = 2
+    private let checkpointFlags = llama_state_seq_flags(LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY)
+
+    /// Where to save checkpoints while reading `tokens` from `start`: right after each of the
+    /// last two end-of-turn tokens, which is the end of the new message and the start of it
+    /// (so an edited message is read from there)
+    private func checkpointPositions(in tokens: [Token], after start: Int) -> [Int] {
+        guard llama_model_is_recurrent(model) || llama_model_is_hybrid(model) else { return [] }
+        var positions: [Int] = []
+        var position = tokens.count - 1
+        while position > start && positions.count < 2 {
+            if llama_vocab_is_eog(vocab, tokens[position - 1]) { positions.append(position) }
+            position -= 1
+        }
+        return positions.reversed()
+    }
+
+    private func saveCheckpoint(tokenCount: Int) {
+        let size = llama_state_seq_get_size_ext(context, 0, checkpointFlags)
+        guard size > 0 else { return }
+        var data = [UInt8](repeating: 0, count: size)
+        let written = llama_state_seq_get_data_ext(context, &data, size, 0, checkpointFlags)
+        guard written > 0 else { return }
+        checkpoints.append(Checkpoint(tokenCount: tokenCount, data: Array(data.prefix(written))))
+        if checkpoints.count > maxCheckpoints { checkpoints.removeFirst() }
+    }
+
+    /// Puts the memory back to the latest checkpoint at or before `count` tokens, and returns
+    /// how many tokens it holds then, or nil when there's none or restoring fails
+    private func restoreCheckpoint(upTo count: Int) -> Int? {
+        guard let checkpoint = checkpoints.last(where: { $0.tokenCount <= count }) else { return nil }
+        let restored = checkpoint.data.withUnsafeBufferPointer { buffer in
+            llama_state_seq_set_data_ext(context, buffer.baseAddress, buffer.count, 0, checkpointFlags)
+        }
+        guard restored > 0, llama_memory_seq_rm(llama_get_memory(context), 0, Int32(checkpoint.tokenCount), -1) else {
+            return nil
+        }
+        return checkpoint.tokenCount
+    }
+
     private func clearBatch() {
         batch.n_tokens = 0
     }
@@ -370,6 +443,7 @@ public actor LLMCore {
         currentTokenCount = 0
         tokenBuffer.removeAll()
         contextTokens.removeAll()
+        checkpoints.removeAll()
         shouldContinuePredicting = false
         // Dualo patch: seq_rm(-1, ...) leaves recurrent memory's per-sequence tails pointing at
         // cleared cells, which trips GGML_ASSERT(cell.has_seq_id(seq_id)) on the next decode
@@ -607,6 +681,7 @@ public actor LLMCore {
 
         llama_memory_clear(llama_get_memory(context), false)
         contextTokens.removeAll()
+        checkpoints.removeAll()
         currentTokenCount = 0
 
         return embeddings

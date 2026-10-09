@@ -18,7 +18,8 @@ enum GGUFServiceError: LocalizedError {
     case generationFailed(String)
     case cancelled
     case invalidModelPath
-    
+    case messageTooLong
+
     var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
@@ -31,6 +32,8 @@ enum GGUFServiceError: LocalizedError {
             return "Generation was cancelled"
         case .invalidModelPath:
             return "Invalid model file path"
+        case .messageTooLong:
+            return "This message is too long for the model to read. Try a shorter one."
         }
     }
 }
@@ -38,6 +41,8 @@ enum GGUFServiceError: LocalizedError {
 // MARK: - Generation Statistics
 
 struct GenerationStats {
+    /// The chat the reply was for, so other chats don't show its stats
+    let conversationId: UUID
     let tokenCount: Int
     let durationSeconds: Double
     let tokensPerSecond: Double
@@ -72,6 +77,8 @@ class GGUFService: ObservableObject {
     @Published var isGenerating: Bool = false
     @Published var loadedModelId: String?
     @Published var errorMessage: String?
+    /// What the model remembers of the chat it's serving
+    @Published private(set) var memory: ModelMemory?
     
     // MARK: - Performance Statistics
     @Published var lastGenerationStats: GenerationStats?
@@ -80,12 +87,14 @@ class GGUFService: ObservableObject {
     
     // MARK: - Private Properties
     
-    private var llm: LLM?
+    private(set) var llm: LLM?
     private var currentGenerationTask: Task<Void, Never>?
     private var currentGenerationId: UUID?
     /// The most recent generation, stopped or not. Each new one waits for it to wind down,
     /// because LLM.swift silently ignores a `respond` call while another is still running.
     private var lastGenerationTask: Task<Void, Never>?
+    /// Tokens the loaded model's context holds
+    private var contextSize = AppConstants.LocalModels.maxMobileContextTokens
     private let localModelManager = LocalModelManager.shared
 
     nonisolated private static let baseSystemPrompt = "You are a helpful assistant."
@@ -215,6 +224,7 @@ class GGUFService: ObservableObject {
         }
         
         llm = loadedLLM
+        self.contextSize = Int(contextSize)
 
         Logger.inference.info("GGUF model loaded successfully")
         
@@ -229,6 +239,7 @@ class GGUFService: ObservableObject {
         isModelLoaded = false
         loadedModelId = nil
         currentConversationId = nil
+        memory = nil
         Logger.inference.info("GGUF model unloaded")
     }
     
@@ -237,7 +248,8 @@ class GGUFService: ObservableObject {
     /// Generate a streaming response for the given message
     /// - Parameters:
     ///   - message: The user's message to respond to
-    ///   - history: The conversation history (excluding the current message) - only used when switching conversations
+    ///   - history: The conversation so far (excluding the current message). The model sees
+    ///     as much of it as fits in its context, newest first.
     ///   - conversationId: The ID of the current conversation - used to detect conversation switches
     func streamMessage(_ message: String, history: [Message], conversationId: UUID) -> AsyncThrowingStream<String, Error> {
         // Capture values needed for the detached task BEFORE creating the stream
@@ -245,9 +257,9 @@ class GGUFService: ObservableObject {
         let previousGeneration = self.lastGenerationTask
         let isNewConversation = self.currentConversationId != conversationId
         let systemPrompt = Self.systemPrompt(with: CustomInstructions.current)
-
-        // Only convert history if we're switching conversations
-        let historyForLLM: [Chat]? = isNewConversation ? self.convertToLLMHistory(history) : nil
+        let entries = Self.memoryEntries(from: history)
+        let contextSize = self.contextSize
+        let lastForgottenId = lastForgottenMessageId(in: conversationId)
 
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
         let generationId = UUID()
@@ -260,6 +272,15 @@ class GGUFService: ObservableObject {
                 return
             }
 
+            let plan = await Self.planMemory(
+                for: entries, message: message, systemPrompt: systemPrompt, lastForgottenId: lastForgottenId,
+                conversationId: conversationId, contextSize: contextSize, llm: llm
+            )
+            guard plan.fits else {
+                continuation.finish(throwing: GGUFServiceError.messageTooLong)
+                return
+            }
+
             // Update UI state and track current conversation
             await MainActor.run {
                 self.isGenerating = true
@@ -267,20 +288,22 @@ class GGUFService: ObservableObject {
                 self.generationStartTime = Date()
                 self.lastGenerationStats = nil
                 self.currentConversationId = conversationId
+                self.memory = plan.memory
             }
 
             Self.apply(systemPrompt, to: llm)
 
             if isNewConversation {
-                // Conversation changed - clear history and the KV cache, then load this chat's turns
+                // Conversation changed - clear the KV cache
                 Logger.inference.debug("Conversation changed, resetting context")
                 llm.reset()
-                llm.history = historyForLLM ?? []
-            } else {
-                // Same conversation - LLM.swift already holds the previous turns and reuses
-                // the KV cache for them, so only the new message gets evaluated
-                Logger.inference.debug("Continuing conversation (LLM history: \(llm.history.count) turns)")
             }
+            // The app's copy of the chat is the one the model sees, so edits and removed turns
+            // carry over. LLM.swift reuses the KV cache for however much of the prompt still
+            // matches, which within a chat is everything before the new message (for Qwen3.5,
+            // from a checkpoint at the end of the last one).
+            llm.history = plan.history
+            Logger.inference.debug("Remembering \(plan.history.count) of \(entries.count) messages")
 
             // Stream reasoning and the answer as one string, with reasoning wrapped in
             // <think> tags so MessageContentRenderer shows it as a thinking block.
@@ -308,25 +331,17 @@ class GGUFService: ObservableObject {
                 }
             }
 
-            // Renders the prompt with the model's own chat template, generates,
-            // and appends this turn (answer only, no reasoning) to llm.history.
+            // Renders the prompt with the model's own chat template and generates.
             // Reasoning is suppressed: LLM.swift otherwise forces it on, and small models
             // (Qwen3.5 ships with it off) can think for minutes on a phone before answering.
             await llm.respond(to: message, thinking: .suppressed)
-
-            // Models without an embedded template fall back to ChatML, where <think> blocks
-            // land in the answer. Strip them from history to save context space.
-            let cleanedHistory = Self.buildCleanedHistory(from: llm.history)
-            if cleanedHistory.count != llm.history.count ||
-               zip(cleanedHistory, llm.history).contains(where: { $0.content != $1.content }) {
-                llm.history = cleanedHistory
-            }
 
             await MainActor.run {
                 if let startTime = self.generationStartTime {
                     let duration = Date().timeIntervalSince(startTime)
                     let tokensPerSecond = duration > 0 ? Double(self.currentTokenCount) / duration : 0
                     self.lastGenerationStats = GenerationStats(
+                        conversationId: conversationId,
                         tokenCount: self.currentTokenCount,
                         durationSeconds: duration,
                         tokensPerSecond: tokensPerSecond
@@ -360,12 +375,20 @@ class GGUFService: ObservableObject {
         return stream
     }
     
-    /// Makes the next message load its chat's history from the app instead of reusing the
-    /// turns the model holds, for when the app has changed them (an edited message or a
-    /// regenerated reply). The reset itself happens in `streamMessage`, after any reply
-    /// that's still winding down has finished.
-    func reloadHistoryOnNextMessage() {
-        currentConversationId = nil
+    /// Works out what the model will remember of a chat when its next message is sent,
+    /// so the chat can show where that memory starts before then.
+    func refreshMemory(of messages: [Message], conversationId: UUID) async {
+        await lastGenerationTask?.value
+        guard let llm else { return }
+        let plan = await Self.planMemory(
+            for: Self.memoryEntries(from: messages), message: nil,
+            systemPrompt: Self.systemPrompt(with: CustomInstructions.current),
+            lastForgottenId: lastForgottenMessageId(in: conversationId),
+            conversationId: conversationId, contextSize: contextSize, llm: llm
+        )
+        // The model may have changed or started on another chat in the meantime
+        guard llm === self.llm, !isGenerating else { return }
+        memory = plan.memory
     }
 
     /// Clear the current conversation context
@@ -377,48 +400,68 @@ class GGUFService: ObservableObject {
         Logger.inference.debug("Conversation context cleared")
     }
 
-    /// Build a cleaned copy of LLM history with thinking blocks stripped from bot responses.
-    /// Pure function — operates on values, safe to call from any isolation context.
-    nonisolated private static func buildCleanedHistory(from history: [Chat]) -> [Chat] {
-        guard !history.isEmpty else { return [] }
-
-        var cleanedHistory: [Chat] = []
-        for chat in history {
-            if chat.role == .bot {
-                let cleanedContent = stripThinkingBlocks(from: chat.content)
-                if !cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    cleanedHistory.append((role: .bot, content: cleanedContent))
-                }
-            } else {
-                cleanedHistory.append(chat)
-            }
-        }
-        return cleanedHistory
-    }
-    
-    /// Convert app's Message array to LLM.swift's Chat history format
-    /// Only used when switching conversations - for continuing the same conversation,
-    /// we let LLM.swift manage history naturally.
-    private func convertToLLMHistory(_ messages: [Message]) -> [Chat] {
-        // Convert Message to Chat format, stripping thinking blocks from assistant responses
-        // to avoid confusing the model (it should generate fresh thinking, not see old thinking in history)
-        return messages.compactMap { message -> Chat? in
+    /// A chat's messages as the model sees them, each with the id of the message it came from.
+    /// Reasoning is left out of replies, since the model should think afresh rather than
+    /// read old thinking, and messages left empty are skipped.
+    nonisolated static func memoryEntries(from messages: [Message]) -> [(id: UUID, chat: Chat)] {
+        messages.compactMap { message in
             let role: Role = message.role == Message.Role.user ? .user : .bot
-            let content: String
-            if role == .bot {
-                // Strip <think>...</think> blocks from assistant messages
-                content = Self.stripThinkingBlocks(from: message.content)
-            } else {
-                content = message.content
-            }
-            // Skip empty messages after stripping
-            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                return nil
-            }
-            return (role: role, content: content)
+            let content = role == .bot ? stripThinkingBlocks(from: message.content) : message.content
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return (id: message.id, chat: (role: role, content: content))
         }
     }
-    
+
+    /// The newest message the model has already forgotten in this chat, if any
+    private func lastForgottenMessageId(in conversationId: UUID) -> UUID? {
+        memory?.conversationId == conversationId ? memory?.lastForgottenMessageId : nil
+    }
+
+    /// The newest messages that fit in the model's context alongside the system prompt, the
+    /// new message (none when looking ahead to the next one) and room for the reply. Messages
+    /// after `lastForgottenId` stay while they fit, so the chat's start doesn't move every time.
+    nonisolated private static func planMemory(
+        for entries: [(id: UUID, chat: Chat)],
+        message: String?,
+        systemPrompt: String,
+        lastForgottenId: UUID?,
+        conversationId: UUID,
+        contextSize: Int,
+        llm: LLM
+    ) async -> (history: [Chat], memory: ModelMemory, fits: Bool) {
+        func tokens(_ text: String) async -> Int {
+            await llm.encode(text, shouldAddBOS: false).count + ModelMemoryBudget.tokensPerMessage
+        }
+
+        var fixedTokens = await tokens(systemPrompt) + ModelMemoryBudget.replyPreambleTokens
+        if let message {
+            fixedTokens += await tokens(message)
+        }
+        var sizes: [Int] = []
+        for entry in entries {
+            sizes.append(await tokens(entry.chat.content))
+        }
+
+        let available = contextSize - ModelMemoryBudget.replyReserve(contextSize: contextSize)
+        let kept = ModelMemoryBudget.rememberedCount(
+            sizes: sizes,
+            isUserMessage: entries.map { $0.chat.role == .user },
+            budget: available - fixedTokens,
+            forgottenCount: entries.firstIndex { $0.id == lastForgottenId }.map { $0 + 1 } ?? 0
+        )
+        let memory = ModelMemory(
+            conversationId: conversationId,
+            lastForgottenMessageId: kept < entries.count ? entries[entries.count - kept - 1].id : nil,
+            usedTokens: fixedTokens + sizes.suffix(kept).reduce(0, +),
+            availableTokens: available
+        )
+        return (
+            history: entries.suffix(kept).map(\.chat),
+            memory: memory,
+            fits: fixedTokens <= contextSize - ModelMemoryBudget.minimumReplyTokens
+        )
+    }
+
     /// Remove <think>...</think> blocks from content
     /// These are the model's internal reasoning and shouldn't be included in history
     nonisolated static func stripThinkingBlocks(from content: String) -> String {

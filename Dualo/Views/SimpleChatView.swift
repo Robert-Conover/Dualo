@@ -35,7 +35,6 @@ struct SimpleChatView: View {
     @State private var showCamera = false
     @State private var pendingAttachments: [ImageAttachment] = []
     @State private var capturedImage: ImageAttachment?
-    @State private var showGenerationStats = false
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
 
@@ -65,7 +64,6 @@ struct SimpleChatView: View {
             ))
             .background(Color.theme.chatBackground)
             .onAppear(perform: handleOnAppear)
-            .onChange(of: viewModel.isStreaming, handleStreamingChange)
             .onChange(of: currentProvider) { _, provider in
                 if !provider.supportsImageAttachments { pendingAttachments = [] }
             }
@@ -96,27 +94,6 @@ struct SimpleChatView: View {
         }
     }
     
-    private func handleStreamingChange(_ oldValue: Bool, _ newValue: Bool) {
-        // Streaming state changed - no need to manually persist since ChatViewModel handles it
-        if oldValue && !newValue {
-            Logger.ui.debug("SimpleChatView: Streaming completed")
-            
-            // Show generation stats for local models
-            if currentProvider == .local && ggufService.lastGenerationStats != nil {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    showGenerationStats = true
-                }
-                
-                // Auto-hide after 8 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        showGenerationStats = false
-                    }
-                }
-            }
-        }
-    }
-    
     // MARK: - Message List
 
     private var messagesList: some View {
@@ -126,8 +103,15 @@ struct SimpleChatView: View {
             showScrollToBottom: $showScrollToBottom,
             scrollToBottomAction: $performScrollToBottom,
             isInputFocused: $isInputFocused,
-            onEditMessage: beginEditing
+            onEditMessage: beginEditing,
+            lastForgottenMessageId: lastForgottenMessageId
         )
+    }
+
+    private var lastForgottenMessageId: UUID? {
+        guard currentProvider == .local, let memory = ggufService.memory,
+              memory.conversationId == conversationId else { return nil }
+        return memory.lastForgottenMessageId
     }
 
     private func beginEditing(_ messageId: UUID) {
@@ -152,8 +136,8 @@ struct SimpleChatView: View {
             pendingAttachments: $pendingAttachments,
             showPhotoPicker: $showPhotoPicker,
             showCamera: $showCamera,
-            showGenerationStats: $showGenerationStats,
             isInputFocused: $isInputFocused,
+            conversationId: conversationId,
             currentProvider: currentProvider,
             onSendMessage: sendMessage
         )
