@@ -49,4 +49,22 @@ enum ModelMemoryBudget {
         }
         return count
     }
+
+    /// Share of `budget` that's kept when older messages have to go
+    static let keptShareWhenForgetting = 0.75
+
+    /// Like `rememberedCount`, for a chat whose oldest `forgottenCount` messages are already
+    /// forgotten: the rest stay while they fit. When they don't, older ones go in one step that
+    /// leaves room for the next few messages, because each change to where the chat starts makes
+    /// the model read all of it again.
+    static func rememberedCount(sizes: [Int], isUserMessage: [Bool], budget: Int, forgottenCount: Int) -> Int {
+        let rest = sizes.count - forgottenCount
+        if rest >= 0, sizes.suffix(rest).reduce(0, +) <= budget, rest == 0 || isUserMessage[forgottenCount] {
+            return rest
+        }
+        let keptBudget = Int(Double(budget) * keptShareWhenForgetting)
+        let count = rememberedCount(sizes: sizes, isUserMessage: isUserMessage, budget: keptBudget)
+        // Unless that leaves nothing, when the newest messages could still fit in the whole budget
+        return count > 0 ? count : rememberedCount(sizes: sizes, isUserMessage: isUserMessage, budget: budget)
+    }
 }

@@ -87,7 +87,7 @@ class GGUFService: ObservableObject {
     
     // MARK: - Private Properties
     
-    private var llm: LLM?
+    private(set) var llm: LLM?
     private var currentGenerationTask: Task<Void, Never>?
     private var currentGenerationId: UUID?
     /// The most recent generation, stopped or not. Each new one waits for it to wind down,
@@ -259,6 +259,7 @@ class GGUFService: ObservableObject {
         let systemPrompt = Self.systemPrompt(with: CustomInstructions.current)
         let entries = Self.memoryEntries(from: history)
         let contextSize = self.contextSize
+        let lastForgottenId = lastForgottenMessageId(in: conversationId)
 
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: String.self)
         let generationId = UUID()
@@ -272,7 +273,7 @@ class GGUFService: ObservableObject {
             }
 
             let plan = await Self.planMemory(
-                for: entries, message: message, systemPrompt: systemPrompt,
+                for: entries, message: message, systemPrompt: systemPrompt, lastForgottenId: lastForgottenId,
                 conversationId: conversationId, contextSize: contextSize, llm: llm
             )
             guard plan.fits else {
@@ -299,7 +300,8 @@ class GGUFService: ObservableObject {
             }
             // The app's copy of the chat is the one the model sees, so edits and removed turns
             // carry over. LLM.swift reuses the KV cache for however much of the prompt still
-            // matches, which within a chat is everything before the new message.
+            // matches, which within a chat is everything before the new message (for Qwen3.5,
+            // from a checkpoint at the end of the last one).
             llm.history = plan.history
             Logger.inference.debug("Remembering \(plan.history.count) of \(entries.count) messages")
 
@@ -381,6 +383,7 @@ class GGUFService: ObservableObject {
         let plan = await Self.planMemory(
             for: Self.memoryEntries(from: messages), message: nil,
             systemPrompt: Self.systemPrompt(with: CustomInstructions.current),
+            lastForgottenId: lastForgottenMessageId(in: conversationId),
             conversationId: conversationId, contextSize: contextSize, llm: llm
         )
         // The model may have changed or started on another chat in the meantime
@@ -409,12 +412,19 @@ class GGUFService: ObservableObject {
         }
     }
 
+    /// The newest message the model has already forgotten in this chat, if any
+    private func lastForgottenMessageId(in conversationId: UUID) -> UUID? {
+        memory?.conversationId == conversationId ? memory?.lastForgottenMessageId : nil
+    }
+
     /// The newest messages that fit in the model's context alongside the system prompt, the
-    /// new message (none when looking ahead to the next one) and room for the reply.
+    /// new message (none when looking ahead to the next one) and room for the reply. Messages
+    /// after `lastForgottenId` stay while they fit, so the chat's start doesn't move every time.
     nonisolated private static func planMemory(
         for entries: [(id: UUID, chat: Chat)],
         message: String?,
         systemPrompt: String,
+        lastForgottenId: UUID?,
         conversationId: UUID,
         contextSize: Int,
         llm: LLM
@@ -436,7 +446,8 @@ class GGUFService: ObservableObject {
         let kept = ModelMemoryBudget.rememberedCount(
             sizes: sizes,
             isUserMessage: entries.map { $0.chat.role == .user },
-            budget: available - fixedTokens
+            budget: available - fixedTokens,
+            forgottenCount: entries.firstIndex { $0.id == lastForgottenId }.map { $0 + 1 } ?? 0
         )
         let memory = ModelMemory(
             conversationId: conversationId,

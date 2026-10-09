@@ -172,6 +172,67 @@ struct GGUFServiceIntegrationTests {
         #expect(memory.usedTokens > 0 && memory.usedTokens < memory.availableTokens / 4)
     }
 
+    /// Tokens the model had to read for the last message; the rest came from its cache
+    private func lastReadTokenCount() async throws -> Int {
+        await (try #require(service.llm)).core.lastReadTokenCount
+    }
+
+    @Test func nextMessageReadsOnlyWhatsNew() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        #expect(try await lastReadTokenCount() > 400)
+
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
+
+        // The last reply and the new message, not the diary entries before them
+        #expect(try await lastReadTokenCount() < 100)
+        #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+    }
+
+    @Test func fullChatKeepsWhereItStartsForTheNextMessages() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 30)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        let firstForgotten = try #require(service.memory?.lastForgottenMessageId)
+
+        _ = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(service.memory?.lastForgottenMessageId == firstForgotten)
+        #expect(try await lastReadTokenCount() < 100)
+    }
+
+    @Test func regeneratingOrEditingReadsOnlyTheLastMessage() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 3)
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        let earlier = Array(chat.messages.dropLast(2))
+
+        _ = try await reply(to: "My name is Zorblax. Just say OK.", history: earlier, in: chat.id)
+        #expect(try await lastReadTokenCount() < 20)
+
+        let edited = try await reply(to: "My name is Quillon. What is my name? Answer in one word.", history: earlier, in: chat.id)
+        #expect(try await lastReadTokenCount() < 40)
+        #expect(answer(edited).contains("Quillon"), "Reply: \(edited)")
+    }
+
+    @Test func replyFromTheCacheMatchesOneReadFromScratch() async throws {
+        var chat = TestChat()
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
+        _ = try await send("My favorite color is teal. Just say OK.", in: &chat)
+        let question = "What are my name and favorite color?"
+
+        let fromCache = try await reply(to: question, history: chat.messages, in: chat.id)
+        let readFromCache = try await lastReadTokenCount()
+        service.clearConversationContext()
+        let fromScratch = try await reply(to: question, history: chat.messages, in: chat.id)
+        let readFromScratch = try await lastReadTokenCount()
+
+        #expect(fromCache == fromScratch)
+        // Only the last reply and the question, not the first exchange too
+        #expect(readFromCache < readFromScratch / 2, "Read \(readFromCache) of \(readFromScratch) tokens")
+    }
+
     @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
         var chat = TestChat()
         _ = try await send("Say hi.", in: &chat)

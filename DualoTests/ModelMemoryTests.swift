@@ -51,6 +51,38 @@ struct ModelMemoryBudgetTests {
         #expect(ModelMemoryBudget.rememberedCount(sizes: [10, 10], isUserMessage: [true, false], budget: -50) == 0)
         #expect(ModelMemoryBudget.rememberedCount(sizes: [], isUserMessage: [], budget: 100) == 0)
     }
+
+    private let eightMessages = (sizes: Array(repeating: 10, count: 8), isUser: [true, false, true, false, true, false, true, false])
+
+    @Test func keepsForgettingFromTheSamePlaceWhileTheRestFits() {
+        // Everything would fit, but bringing old messages back would move the chat's start too
+        let count = ModelMemoryBudget.rememberedCount(
+            sizes: eightMessages.sizes, isUserMessage: eightMessages.isUser, budget: 80, forgottenCount: 2
+        )
+        #expect(count == 6)
+    }
+
+    @Test func remembersAllOfAChatThatStillFits() {
+        let count = ModelMemoryBudget.rememberedCount(
+            sizes: eightMessages.sizes, isUserMessage: eightMessages.isUser, budget: 80, forgottenCount: 0
+        )
+        #expect(count == 8)
+    }
+
+    @Test func forgetsInOneStepWhenTheRestNoLongerFits() {
+        // Six messages would fit in 70 tokens, but then the next one would move the start again
+        let count = ModelMemoryBudget.rememberedCount(
+            sizes: eightMessages.sizes, isUserMessage: eightMessages.isUser, budget: 70, forgottenCount: 0
+        )
+        #expect(count == 4)
+    }
+
+    @Test func keepsTheNewestExchangeIfOnlyTheWholeBudgetHoldsIt() {
+        let count = ModelMemoryBudget.rememberedCount(
+            sizes: [10, 10, 30, 30], isUserMessage: [true, false, true, false], budget: 65, forgottenCount: 0
+        )
+        #expect(count == 2)
+    }
 }
 
 struct MemoryEntriesTests {
