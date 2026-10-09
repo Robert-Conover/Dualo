@@ -148,6 +148,7 @@ class ChatViewModel: ObservableObject {
         // Skip if already loaded
         if ggufService.isModelLoaded && ggufService.loadedModelId == modelId {
             Logger.chat.debug("Local model \(modelId, privacy: .public) already loaded")
+            refreshModelMemory()
             return
         }
         
@@ -162,6 +163,7 @@ class ChatViewModel: ObservableObject {
         do {
             Logger.chat.info("Loading local model \(modelId, privacy: .public)")
             try await ggufService.loadModel(modelId: modelId)
+            refreshModelMemory()
         } catch {
             Logger.chat.error("Failed to load local model: \(String(describing: error), privacy: .public)")
             throw error
@@ -254,7 +256,7 @@ class ChatViewModel: ObservableObject {
         }
         guard !text.isEmpty || !attachments.isEmpty else { return }
         if let editedIndex {
-            removeMessages(from: editedIndex, config: config)
+            removeMessages(from: editedIndex)
         }
 
         let userMessage = Message(role: Message.Role.user, content: text, attachments: attachments, sendStatus: .sending)
@@ -318,20 +320,25 @@ class ChatViewModel: ObservableObject {
         let userMessage = messages[userIndex]
         let history = Array(messages[..<userIndex])
         let attachments = config.provider.supportsImageAttachments ? userMessage.attachments : []
-        removeMessages(from: userIndex + 1, config: config)
+        removeMessages(from: userIndex + 1)
         updateMessageStatus(userMessage.id, status: .sending)
 
         startStreaming(userMessage.content, history: history, attachments: attachments, userMessageId: userMessage.id, config: config)
     }
 
-    /// Removes the message at `index` and everything after it. A local model still holds
-    /// those turns, so it reloads the chat's history with the next message.
-    private func removeMessages(from index: Int, config: APIConfiguration) {
+    /// Removes the message at `index` and everything after it.
+    private func removeMessages(from index: Int) {
         updateCurrentConversation { $0.removeMessages(from: index) }
         contextTracker.updateFromMessages(messages)
-        if config.provider == .local {
-            GGUFService.shared.reloadHistoryOnNextMessage()
-        }
+        refreshModelMemory()
+    }
+
+    /// Works out what a local model will remember of this chat with the next message,
+    /// so the chat can show where its memory starts.
+    private func refreshModelMemory() {
+        guard apiConfiguration?.provider == .local, let conversationId = currentConversationId else { return }
+        let messages = self.messages
+        Task { await GGUFService.shared.refreshMemory(of: messages, conversationId: conversationId) }
     }
 
     /// The current configuration if it can send (local, or cloud with a key); otherwise shows the setup error.
@@ -446,6 +453,7 @@ class ChatViewModel: ObservableObject {
         
         // Update context tracker with final message content
         contextTracker.updateFromMessages(messages)
+        refreshModelMemory()
         
         // Mark user message as sent on success (if not already marked on first token)
         if !hasMarkedUserMessageSent, let userMsgId = streamingUserMessageId {
@@ -487,13 +495,16 @@ class ChatViewModel: ObservableObject {
         }
         
         resetStreamingState()
-        
+        refreshModelMemory()
+
         HapticFeedback.light()
     }
     
     private func handleStreamingError(_ error: Error) {
         if let networkError = error as? NetworkError {
             errorMessage = networkError.localizedDescription
+        } else if case GGUFServiceError.messageTooLong = error {
+            errorMessage = error.localizedDescription
         } else {
             errorMessage = "Streaming error: \(error.localizedDescription)"
         }

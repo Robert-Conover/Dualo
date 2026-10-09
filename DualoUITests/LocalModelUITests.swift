@@ -6,6 +6,7 @@
 //  Qwen3.5 0.8B is downloaded (see GGUFServiceIntegrationTests for setup).
 //
 
+import UIKit
 import XCTest
 
 final class LocalModelUITests: XCTestCase {
@@ -146,6 +147,34 @@ final class LocalModelUITests: XCTestCase {
 
         sleep(2)
         XCTAssertFalse(element("generationStats").exists, "Stats showed while switched off")
+    }
+
+    func testLongChatShowsWhereTheModelsMemoryStarts() throws {
+        // The generation stats would take the context pill's place
+        relaunch(with: ["-\(showGenerationStatsKey)", "NO"])
+        try openChatOnLocalModel()
+
+        // About 3,200 tokens: too long for the model to also fit the "Hello" it started with,
+        // short enough to leave room for a reply. Typing it would take minutes, so it's pasted.
+        let note = String(repeating: "The tide came in slowly over the grey stones near the old pier. ", count: 230)
+        UIPasteboard.general.string = note + "Just say OK."
+        let composer = element("chatComposer")
+        composer.tap()
+        composer.press(forDuration: 1.2)
+        let paste = app.menuItems["Paste"].exists ? app.menuItems["Paste"] : app.buttons["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5), "Paste option didn't appear")
+        paste.tap()
+        sendButton.tap()
+        waitForLabel("Send", on: sendButton, timeout: 300)
+
+        let divider = element("modelMemoryDivider")
+        XCTAssertTrue(divider.waitForExistence(timeout: 10), "No divider where the model's memory starts")
+        sleep(1) // Let the list scroll to it
+        XCTAssertLessThanOrEqual(divider.frame.maxY, element("chatComposer").frame.minY,
+                                 "Divider is hidden behind the composer")
+        XCTAssertTrue(element("contextUsage").label.contains("Forgetting oldest"),
+                      "Context pill doesn't say messages are being forgotten: \(element("contextUsage").label)")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "An error alert appeared")
     }
 
     func testLocalModelChatHasNoAttachButton() throws {

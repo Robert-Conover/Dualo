@@ -53,8 +53,25 @@ struct GGUFServiceIntegrationTests {
         for try await chunk in service.streamMessage(message, history: history, conversationId: conversation) {
             text += chunk
         }
-        print("[GGUF test] \(message) -> \(text.count) chars: \(text.prefix(400))")
+        print("[GGUF test] \(message.prefix(80)) -> \(text.count) chars: \(text.prefix(400))")
         return text
+    }
+
+    /// Sends `message` in `chat` with its history, like the app, and adds the turn to it.
+    private func send(_ message: String, in chat: inout TestChat) async throws -> String {
+        let reply = try await reply(to: message, history: chat.messages, in: chat.id)
+        chat.messages.append(Message(role: Message.Role.user, content: message))
+        chat.messages.append(Message(role: Message.Role.assistant, content: reply))
+        return reply
+    }
+
+    /// A chat about something else, long enough to fill a good share of the model's context.
+    private func fillerMessages(exchanges: Int) -> [Message] {
+        let note = String(repeating: "The tide came in slowly over the grey stones near the old pier. ", count: 12)
+        return (1...exchanges).flatMap { day in
+            [Message(role: Message.Role.user, content: "Diary entry for day \(day): \(note) Just say OK."),
+             Message(role: Message.Role.assistant, content: "OK.")]
+        }
     }
 
     @Test func answersAQuestion() async throws {
@@ -69,9 +86,9 @@ struct GGUFServiceIntegrationTests {
     }
 
     @Test func remembersEarlierTurnsInTheSameChat() async throws {
-        let chat = UUID()
-        _ = try await reply(to: "My favorite color is teal. Just say OK.", in: chat)
-        let reply = try await reply(to: "What is my favorite color? Answer in one word.", in: chat)
+        var chat = TestChat()
+        _ = try await send("My favorite color is teal. Just say OK.", in: &chat)
+        let reply = try await send("What is my favorite color? Answer in one word.", in: &chat)
 
         #expect(answer(reply).lowercased().contains("teal"), "Reply: \(reply)")
     }
@@ -88,24 +105,80 @@ struct GGUFServiceIntegrationTests {
         #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
 
-    @Test func reloadingHistoryForgetsTurnsTheAppRemoved() async throws {
-        let chat = UUID()
-        _ = try await reply(to: "My name is Zorblax. Just say OK.", in: chat)
+    @Test func forgetsTurnsTheAppRemoved() async throws {
+        var chat = TestChat()
+        _ = try await send("My name is Zorblax. Just say OK.", in: &chat)
 
         // The app dropped that exchange (an edited message or regenerated reply)
-        service.reloadHistoryOnNextMessage()
-        let reply = try await reply(to: "What is my name? Answer in one word.", history: [], in: chat)
+        chat.messages.removeAll()
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
 
         #expect(!answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
 
-    @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
+    @Test func longChatForgetsItsOldestMessages() async throws {
+        var chat = TestChat()
+        chat.messages = [
+            Message(role: Message.Role.user, content: "My name is Zorblax. Just say OK."),
+            Message(role: Message.Role.assistant, content: "OK.")
+        ] + fillerMessages(exchanges: 30)
+
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(!answer(reply).contains("Zorblax"), "Reply: \(reply)")
+        let memory = try #require(service.memory)
+        #expect(memory.conversationId == chat.id)
+        #expect(memory.forgetsMessages)
+        #expect(memory.usedTokens <= memory.availableTokens)
+        // The name and its reply are gone, along with the oldest diary entries
+        let forgotten = try #require(chat.messages.firstIndex { $0.id == memory.lastForgottenMessageId })
+        #expect(forgotten >= 1 && forgotten < chat.messages.count - 4)
+    }
+
+    @Test func longChatRemembersItsNewestMessages() async throws {
+        var chat = TestChat()
+        chat.messages = fillerMessages(exchanges: 30) + [
+            Message(role: Message.Role.user, content: "My name is Zorblax. Just say OK."),
+            Message(role: Message.Role.assistant, content: "OK.")
+        ]
+
+        let reply = try await send("What is my name? Answer in one word.", in: &chat)
+
+        #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
+        #expect(service.memory?.forgetsMessages == true)
+    }
+
+    @Test func messageTooLongForTheModelIsAnError() async throws {
+        let message = String(repeating: "The tide came in slowly over the grey stones. ", count: 500)
+
+        await #expect(throws: GGUFServiceError.self) {
+            _ = try await reply(to: message, in: UUID())
+        }
+        #expect(!service.isGenerating)
+    }
+
+    @Test func shortChatForgetsNothing() async throws {
         let chat = UUID()
-        _ = try await reply(to: "Say hi.", in: chat)
+        let messages = [
+            Message(role: Message.Role.user, content: "Hi"),
+            Message(role: Message.Role.assistant, content: "Hello!")
+        ]
+
+        await service.refreshMemory(of: messages, conversationId: chat)
+
+        let memory = try #require(service.memory)
+        #expect(memory.conversationId == chat)
+        #expect(!memory.forgetsMessages)
+        #expect(memory.usedTokens > 0 && memory.usedTokens < memory.availableTokens / 4)
+    }
+
+    @Test func instructionsChangedMidChatApplyToTheNextReply() async throws {
+        var chat = TestChat()
+        _ = try await send("Say hi.", in: &chat)
 
         UserDefaults.standard.set("Your name is Zorblax.", forKey: CustomInstructions.key)
         defer { UserDefaults.standard.removeObject(forKey: CustomInstructions.key) }
-        let reply = try await reply(to: "What is your name? Answer in one word.", in: chat)
+        let reply = try await send("What is your name? Answer in one word.", in: &chat)
 
         #expect(answer(reply).contains("Zorblax"), "Reply: \(reply)")
     }
@@ -126,4 +199,10 @@ struct GGUFServiceIntegrationTests {
         #expect(Date().timeIntervalSince(start) < 30, "The stopped story seems to have kept generating")
         #expect(!service.isGenerating)
     }
+}
+
+/// A chat's id and messages, kept the way the app keeps them.
+private struct TestChat {
+    let id = UUID()
+    var messages: [Message] = []
 }

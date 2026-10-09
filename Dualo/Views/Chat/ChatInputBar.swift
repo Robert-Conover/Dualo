@@ -40,7 +40,8 @@ struct ChatInputBar: View {
                 generationStatsSection(stats: stats)
             }
             // Context usage, once the chat is close enough to the limit to matter
-            else if !viewModel.messages.isEmpty && contextTracker.contextLimit > 0 && contextTracker.usageInfo.isNearLimit {
+            else if !viewModel.messages.isEmpty && usageInfo.contextLimit > 0
+                        && (usageInfo.isNearLimit || usageInfo.forgetsMessages) {
                 contextUsageSection
             }
 
@@ -97,7 +98,7 @@ struct ChatInputBar: View {
                 .foregroundStyle(.green)
 
             // Context usage indicator (compact, in stats banner)
-            ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .compact)
+            ContextUsageIndicator(usageInfo: usageInfo, style: .compact)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -131,7 +132,9 @@ struct ChatInputBar: View {
     }
 
     private var contextUsageSection: some View {
-        ContextUsageIndicator(usageInfo: contextTracker.usageInfo, style: .full)
+        ContextUsageIndicator(usageInfo: usageInfo, style: .full)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("contextUsage")
             .padding(.top, 8)
             .transition(.opacity)
     }
@@ -203,6 +206,21 @@ struct ChatInputBar: View {
     }
 
     // MARK: - Helpers
+
+    /// A local model's measured memory of this chat once it has one, otherwise the estimate
+    private var usageInfo: ContextUsageInfo {
+        guard currentProvider == .local, let memory = ggufService.memory,
+              memory.conversationId == conversationId else {
+            return contextTracker.usageInfo
+        }
+        return ContextUsageInfo(
+            estimatedTokens: memory.usedTokens,
+            contextLimit: memory.availableTokens,
+            provider: .local,
+            modelName: contextTracker.usageInfo.modelName,
+            forgetsMessages: memory.forgetsMessages
+        )
+    }
 
     /// Generation stats are on in Settings and this chat runs on a local model
     private var showsGenerationStats: Bool {

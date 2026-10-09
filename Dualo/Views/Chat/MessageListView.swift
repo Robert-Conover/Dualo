@@ -7,15 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Scroll Offset Tracking
-
-private struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 // MARK: - Message List View
 
 struct MessageListView: View {
@@ -26,10 +17,8 @@ struct MessageListView: View {
     @FocusState.Binding var isInputFocused: Bool
     /// Called with the last user message when it's picked for editing
     let onEditMessage: (UUID) -> Void
-
-    @State private var scrollViewHeight: CGFloat = 0
-    @State private var lastScrollUpdate: Date = .distantPast
-    private let scrollUpdateThrottle: TimeInterval = 0.1  // 100ms
+    /// The newest message a local model no longer remembers; a divider goes under it
+    var lastForgottenMessageId: UUID? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -37,25 +26,33 @@ struct MessageListView: View {
                 LazyVStack(spacing: 8) {
                     ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
                         let isCurrentlyStreaming = viewModel.isStreaming && message.id == viewModel.messages.last?.id && message.role == Message.Role.assistant
-                        MessageBubbleView(
-                            message: message,
-                            isStreaming: isCurrentlyStreaming,
-                            provider: currentProvider,
-                            streamingContent: isCurrentlyStreaming ? viewModel.streamingMessageContent : nil,
-                            onRetry: message.isFailed ? {
-                                Task {
-                                    await viewModel.retryMessage(message.id)
-                                }
-                            } : nil,
-                            onEdit: message.id == viewModel.editableMessageId ? {
-                                onEditMessage(message.id)
-                            } : nil,
-                            onRegenerate: message.id == viewModel.regenerableMessageId ? {
-                                Task {
-                                    await viewModel.regenerateReply(message.id)
-                                }
-                            } : nil
-                        )
+                        // One view per message: a lazy stack loses track of rows that
+                        // sometimes produce a second view, and the list goes blank
+                        VStack(spacing: 8) {
+                            MessageBubbleView(
+                                message: message,
+                                isStreaming: isCurrentlyStreaming,
+                                provider: currentProvider,
+                                streamingContent: isCurrentlyStreaming ? viewModel.streamingMessageContent : nil,
+                                onRetry: message.isFailed ? {
+                                    Task {
+                                        await viewModel.retryMessage(message.id)
+                                    }
+                                } : nil,
+                                onEdit: message.id == viewModel.editableMessageId ? {
+                                    onEditMessage(message.id)
+                                } : nil,
+                                onRegenerate: message.id == viewModel.regenerableMessageId ? {
+                                    Task {
+                                        await viewModel.regenerateReply(message.id)
+                                    }
+                                } : nil
+                            )
+
+                            if message.id == lastForgottenMessageId {
+                                ModelMemoryDivider()
+                            }
+                        }
                         .id(message.id)
                         .transition(.asymmetric(
                             insertion: .push(from: .bottom)
@@ -71,29 +68,26 @@ struct MessageListView: View {
                     if viewModel.isLoading && !viewModel.isStreaming {
                         loadingIndicator
                     }
-
-                    // Bottom anchor for scroll detection
-                    GeometryReader { geometry in
-                        Color.clear
-                            .preference(
-                                key: ScrollOffsetPreferenceKey.self,
-                                value: geometry.frame(in: .named("scrollView")).maxY
-                            )
-                    }
-                    .frame(height: 1)
-                    .id("bottom")
                 }
                 .padding(.vertical, 16)
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: viewModel.messages.count)
             }
-            .coordinateSpace(name: "scrollView")
-            .background(scrollViewHeightTracker)
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { bottomY in
-                updateScrollToBottomVisibility(bottomY: bottomY)
+            // Read from the scroll view itself: a marker view at the end of the lazy stack
+            // gets unloaded when the chat is scrolled far up, and then reports nothing
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height - geometry.visibleRect.maxY
+            } action: { _, distanceFromBottom in
+                updateScrollToBottomVisibility(distanceFromBottom: distanceFromBottom)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChangeCompat(of: viewModel.messages.count) { _ in
                 scrollToBottomOnMessageChange(proxy: proxy)
+            }
+            .onChange(of: lastForgottenMessageId) { _, newValue in
+                // A divider under the last message would land behind the composer
+                if newValue == viewModel.messages.last?.id && !showScrollToBottom {
+                    scrollToBottomOnMessageChange(proxy: proxy)
+                }
             }
             .onChange(of: viewModel.streamingMessageContent) { oldValue, newValue in
                 scrollDuringStreaming(proxy: proxy, oldValue: oldValue, newValue: newValue)
@@ -158,33 +152,15 @@ struct MessageListView: View {
         ))
     }
 
-    private var scrollViewHeightTracker: some View {
-        GeometryReader { geometry in
-            Color.clear
-                .onAppear {
-                    scrollViewHeight = geometry.size.height
-                }
-                .onChange(of: geometry.size.height) { _, newValue in
-                    scrollViewHeight = newValue
-                }
-        }
-    }
-
     // MARK: - Helper Methods
 
-    private func updateScrollToBottomVisibility(bottomY: CGFloat) {
+    private func updateScrollToBottomVisibility(distanceFromBottom: CGFloat) {
         // Don't update while streaming - it interferes with auto-scroll
         guard !viewModel.isStreaming else { return }
         guard !viewModel.messages.isEmpty else { return }
 
-        // Throttle updates to reduce excessive calculations during scrolling
-        let now = Date()
-        guard now.timeIntervalSince(lastScrollUpdate) >= scrollUpdateThrottle else { return }
-        lastScrollUpdate = now
-
         // Show button when user has scrolled up more than threshold from bottom
         let threshold: CGFloat = 100
-        let distanceFromBottom = bottomY - scrollViewHeight
         let shouldShow = distanceFromBottom > threshold
 
         if shouldShow != showScrollToBottom {

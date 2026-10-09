@@ -103,8 +103,15 @@ struct SimpleChatView: View {
             showScrollToBottom: $showScrollToBottom,
             scrollToBottomAction: $performScrollToBottom,
             isInputFocused: $isInputFocused,
-            onEditMessage: beginEditing
+            onEditMessage: beginEditing,
+            lastForgottenMessageId: lastForgottenMessageId
         )
+    }
+
+    private var lastForgottenMessageId: UUID? {
+        guard currentProvider == .local, let memory = ggufService.memory,
+              memory.conversationId == conversationId else { return nil }
+        return memory.lastForgottenMessageId
     }
 
     private func beginEditing(_ messageId: UUID) {
