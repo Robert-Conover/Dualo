@@ -34,6 +34,18 @@ private final class FakeAPIService: APIServiceProtocol {
     func fetchAvailableModels(for provider: APIProvider, apiKey: String) async throws -> [String] { [] }
 
     func stopStreaming() { continuation?.finish() }
+
+    /// The title the "model" writes, and what happens while it does
+    var title: String?
+    var whileNaming: () -> Void = {}
+    private(set) var titleRequests: [String] = []
+
+    func suggestTitle(forChatStartingWith message: String, config: APIConfiguration) async -> String? {
+        titleRequests.append(message)
+        await Task.yield()
+        whileNaming()
+        return title
+    }
 }
 
 @MainActor
@@ -330,6 +342,88 @@ struct ChatViewModelTests {
     }
 }
 
+// MARK: - Chats named by the model
+
+@MainActor
+struct ChatNamingTests {
+    private let api = FakeAPIService()
+    private let manager: FakeConversationManager
+    private let viewModel: ChatViewModel
+
+    init() {
+        let conversation = Conversation(provider: .local, model: "Qwen3.5-0.8B-Q4_K_M")
+        manager = FakeConversationManager(conversation)
+        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: FakeContextTracker())
+        viewModel.loadConversation(conversation)
+        viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
+        api.title = "Trip to Japan"
+    }
+
+    private var title: String? { manager.conversations.first?.title }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<1_000 where !condition() {
+            await Task.yield()
+        }
+    }
+
+    /// Sends `text`, has the model reply, and gives it a chance to name the chat
+    private func exchange(_ text: String) async {
+        let requestCount = api.requests.count
+        await viewModel.sendMessage(text)
+        await waitUntil { api.requests.count > requestCount }
+        api.yield("Sure")
+        api.finish()
+        await waitUntil { !viewModel.isStreaming }
+        for _ in 0..<20 { await Task.yield() }
+    }
+
+    @Test func localModelNamesTheChatAfterItsFirstReply() async {
+        await exchange("Plan a week in Japan for me please")
+
+        #expect(api.titleRequests == ["Plan a week in Japan for me please"])
+        #expect(title == "Trip to Japan")
+    }
+
+    @Test func cloudChatKeepsTheTitleFromItsFirstWords() async {
+        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "sk-test", model: "gpt-6.1-sol")
+        await exchange("Plan a week in Japan for me please")
+
+        #expect(api.titleRequests.isEmpty)
+        #expect(title == "Plan a week in")
+    }
+
+    @Test func chatRenamedWhileTheModelNamesItKeepsTheNewName() async {
+        api.whileNaming = { [manager] in
+            manager.conversations[0].title = "Japan"
+        }
+        await exchange("Plan a week in Japan for me please")
+
+        #expect(title == "Japan")
+    }
+
+    @Test func modelIsAskedToNameAChatOnce() async {
+        api.title = nil
+        await exchange("Plan a week in Japan for me please")
+        await exchange("Make it two weeks")
+
+        #expect(api.titleRequests.count == 1)
+        #expect(title == "Plan a week in")
+    }
+
+    @Test func stoppedReplyDoesntNameTheChat() async {
+        let requestCount = api.requests.count
+        await viewModel.sendMessage("Plan a week in Japan for me please")
+        await waitUntil { api.requests.count > requestCount }
+        api.yield("Sure")
+        await waitUntil { viewModel.messages.first?.sendStatus == .sent }
+        viewModel.stopStreaming()
+        for _ in 0..<20 { await Task.yield() }
+
+        #expect(api.titleRequests.isEmpty)
+    }
+}
+
 // MARK: - Conversation titles
 
 struct ConversationTruncationTests {
@@ -353,6 +447,16 @@ struct ConversationTruncationTests {
         conversation.removeMessages(from: 0)
 
         #expect(conversation.title == "Japan")
+    }
+
+    @Test func onlyTitlesTheAppMadeCanBeReplaced() {
+        var conversation = Conversation(provider: .local, model: "Qwen3.5-0.8B-Q4_K_M")
+        #expect(conversation.hasPlaceholderTitle)
+        conversation.addMessage(Message(role: Message.Role.user, content: "Plan a week in Japan"))
+        #expect(conversation.hasPlaceholderTitle)
+
+        conversation.title = "Trip to Japan"
+        #expect(!conversation.hasPlaceholderTitle)
     }
 
     @Test func removingLaterMessagesKeepsTheTitle() {

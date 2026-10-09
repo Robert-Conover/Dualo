@@ -66,6 +66,23 @@ struct GenerationStats {
 
 // MARK: - GGUF Service
 
+/// Counts generated tokens across threads, up to a limit
+private final class TokenLimit: @unchecked Sendable {
+    private let limit: Int
+    private var tokens = 0
+    private let lock = NSLock()
+
+    init(_ limit: Int) { self.limit = limit }
+
+    /// Counts one token, returning whether that reaches the limit
+    func count() -> Bool {
+        lock.withLock {
+            tokens += 1
+            return tokens >= limit
+        }
+    }
+}
+
 @MainActor
 class GGUFService: ObservableObject {
     static let shared = GGUFService()
@@ -262,7 +279,6 @@ class GGUFService: ObservableObject {
         // Capture values needed for the detached task BEFORE creating the stream
         let llm = self.llm
         let previousGeneration = self.lastGenerationTask
-        let isNewConversation = self.currentConversationId != conversationId
         let systemPrompt = Self.systemPrompt(with: CustomInstructions.current)
         let entries = Self.memoryEntries(from: history)
         let contextSize = self.contextSize
@@ -288,7 +304,9 @@ class GGUFService: ObservableObject {
                 return
             }
 
-            if isNewConversation {
+            // Checked once the previous generation is done, since naming a chat leaves the
+            // model on no chat
+            if await self.currentConversationId != conversationId {
                 await self.switchChat(to: conversationId, llm: llm)
             }
 
@@ -451,6 +469,64 @@ class GGUFService: ObservableObject {
         } else {
             chatMemoryStore.remove(conversationId)
         }
+    }
+
+    // MARK: - Chat Titles
+
+    /// A short title for the chat that starts with `message`, written by the model, or nil if
+    /// it doesn't write one. The model's memory of the chat it's serving is saved first, so
+    /// that chat's next message picks up from there.
+    func suggestTitle(forChatStartingWith message: String) async -> String? {
+        let previousGeneration = lastGenerationTask
+        let task = Task { () -> String? in
+            await previousGeneration?.value
+            guard let llm = self.llm else { return nil }
+            await self.saveCurrentChat()
+            guard llm === self.llm else { return nil }
+            self.currentConversationId = nil
+
+            llm.reset()
+            llm.history = []
+            Self.apply(Self.baseSystemPrompt, to: llm)
+            // A title is a few tokens; stop one that runs on
+            let limit = TokenLimit(AppConstants.LocalModels.maxTitleTokens)
+            llm.updateThinking = { _ in }
+            llm.update = { delta in
+                if delta != nil, limit.count() { llm.stop() }
+            }
+            // The most likely title, rather than a sampled one that may wander off topic
+            let temperature = llm.temp
+            llm.temp = 0
+            await llm.respond(to: Self.titlePrompt(for: message), thinking: .suppressed)
+            llm.temp = temperature
+            return Self.cleanTitle(llm.output)
+        }
+        lastGenerationTask = Task { _ = await task.value }
+        let title = await task.value
+        Logger.inference.debug("Suggested chat title: \(title ?? "none", privacy: .public)")
+        return title
+    }
+
+    /// Asks for a title, with the message quoted so the model names it rather than answers it
+    nonisolated private static func titlePrompt(for message: String) -> String {
+        let message = message.prefix(AppConstants.LocalModels.titleMessageCharacterLimit)
+        return """
+            Write a short title for a chat that starts with the message below, like a \
+            heading of 2 to 5 words that names its topic. Reply with only the title.
+
+            Message: \"\"\"\(message)\"\"\"
+            """
+    }
+
+    /// The model's title as one plain line: no label, quotes, markdown or closing period,
+    /// and at most a few words. Nil if nothing is left.
+    nonisolated static func cleanTitle(_ output: String) -> String? {
+        let line = stripThinkingBlocks(from: output).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let title = line.replacingOccurrences(of: "^\\W*title\\s*:", with: "", options: [.regularExpression, .caseInsensitive])
+        let clutter = CharacterSet(charactersIn: "#*_`\"'“”‘’.,:;").union(.whitespaces)
+        let words = title.trimmingCharacters(in: clutter).split(whereSeparator: \.isWhitespace)
+        let cleaned = words.prefix(AppConstants.LocalModels.maxTitleWords).joined(separator: " ").trimmingCharacters(in: clutter)
+        return cleaned.isEmpty ? nil : cleaned
     }
 
     /// A chat's messages as the model sees them, each with the id of the message it came from.

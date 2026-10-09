@@ -107,6 +107,15 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         updatedAt = Date()
     }
 
+    /// Whether the title is still one the app gave it (not one the user or the model wrote),
+    /// so the model can name the chat
+    var hasPlaceholderTitle: Bool {
+        guard let firstUserMessage = messages.first(where: { $0.role == Message.Role.user }) else {
+            return title == AppConstants.Data.newChatTitle
+        }
+        return title == AppConstants.Data.newChatTitle || title == generateTitle(from: firstUserMessage.content)
+    }
+
     var lastMessage: Message? {
         messages.last
     }
