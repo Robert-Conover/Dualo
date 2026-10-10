@@ -25,6 +25,7 @@ struct HomeView: View {
     @State private var capturedImage: ImageAttachment?
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
+    @State private var setupErrorMessage: String?
     
     @FocusState private var isInputFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -44,6 +45,16 @@ struct HomeView: View {
         return "Select Model"
     }
     
+    /// Nothing to chat with yet: no API key and no downloaded model, as on first launch
+    private var needsSetup: Bool {
+        viewModel.apiConfiguration == nil && localModelManager.downloadedModels.isEmpty
+    }
+
+    /// The model first launch offers to download
+    private var starterModel: LocalModel? {
+        localModelManager.availableModels.first { $0.recommended && !$0.isUserImported }
+    }
+
     private var supportsImageAttachments: Bool {
         viewModel.apiConfiguration?.provider.supportsImageAttachments ?? true
     }
@@ -107,7 +118,8 @@ struct HomeView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showSettings) {
+            // An API key added or a model downloaded in Settings applies here straight away
+            .sheet(isPresented: $showSettings, onDismiss: refreshModelChoice) {
                 SettingsView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
@@ -135,6 +147,10 @@ struct HomeView: View {
             }
             .onChange(of: supportsImageAttachments) { _, supported in
                 if !supported { pendingAttachments = [] }
+            }
+            .onAppear(perform: selectDownloadedModelIfNeeded)
+            .onChange(of: localModelManager.downloadedModels.map(\.id)) {
+                selectDownloadedModelIfNeeded()
             }
         }
     }
@@ -259,8 +275,19 @@ struct HomeView: View {
 
                     Spacer(minLength: 24)
 
-                    promptSuggestionsView
+                    if needsSetup, let starterModel {
+                        ModelSetupCard(
+                            model: starterModel,
+                            errorMessage: setupErrorMessage,
+                            onDownload: { download(starterModel) },
+                            onCancel: { localModelManager.cancelDownload(starterModel.id) },
+                            onUseAPIKey: { showSettings = true }
+                        )
                         .padding(.bottom, 8)
+                    } else {
+                        promptSuggestionsView
+                            .padding(.bottom, 8)
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
                 .contentShape(Rectangle())
@@ -488,6 +515,35 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - First Launch
+
+    private func download(_ model: LocalModel) {
+        HapticFeedback.light()
+        setupErrorMessage = nil
+        Task {
+            do {
+                try await localModelManager.downloadModel(model)
+            } catch {
+                Logger.localModels.error("Starter model download failed: \(String(describing: error), privacy: .public)")
+                setupErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Picks up an API key or a model set up in Settings
+    private func refreshModelChoice() {
+        viewModel.refreshConfiguration()
+        selectDownloadedModelIfNeeded()
+    }
+
+    /// With no model chosen, chooses a downloaded one (the last one used if it's still
+    /// there), so a model downloaded on first launch is ready to chat with
+    private func selectDownloadedModelIfNeeded() {
+        guard viewModel.apiConfiguration == nil, !isModelSwitchingDisabled,
+              let model = localModelManager.selectedModel ?? localModelManager.downloadedModels.first else { return }
+        selectLocalModel(model)
+    }
+
     private func isProviderConfigured(_ provider: APIProvider) -> Bool {
         ModelUtilities.isConfigured(provider, downloadedModels: localModelManager.downloadedModels)
     }

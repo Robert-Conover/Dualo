@@ -5,7 +5,10 @@
 //  Debug-only hooks for DualoUITests. Launching with `-UITestStubAPI` swaps the
 //  cloud API for StubAPIService so chat flows can run without an API key, and
 //  dictation for StubVoiceTranscriber so it needs no microphone.
-//  Local models still run for real.
+//  Local models still run for real. Stubbed launches keep API settings in a keychain of
+//  their own, cleared at each launch. Adding `-UITestFirstLaunch` starts the app as if
+//  freshly installed: no API settings or downloaded models, and a download that only
+//  pretends, then finds the model already on the simulator.
 //
 
 #if DEBUG
@@ -16,6 +19,12 @@ enum UITestSupport {
 
     static var isStubbingAPI: Bool {
         ProcessInfo.processInfo.arguments.contains(stubAPIArgument)
+    }
+
+    static let firstLaunchArgument = "-UITestFirstLaunch"
+
+    static var isSimulatingFirstLaunch: Bool {
+        ProcessInfo.processInfo.arguments.contains(firstLaunchArgument)
     }
 
     /// Stands in for a stored key so the composer and send paths treat the stub as configured.

@@ -20,8 +20,19 @@ class KeychainService {
 
     private init() {
         // Get the bundle identifier, fallback to legacy service ID for migration
-        self.service = Bundle.main.bundleIdentifier ?? AppConstants.Security.legacyKeychainService
+        var service = Bundle.main.bundleIdentifier ?? AppConstants.Security.legacyKeychainService
+        #if DEBUG
+        // UI tests start each launch with no API settings, and leave the real ones alone
+        if UITestSupport.isStubbingAPI { service += ".uitest" }
+        #endif
+        self.service = service
         self.queryBuilder = KeychainQueryBuilder(service: service)
+        #if DEBUG
+        if UITestSupport.isStubbingAPI {
+            SecItemDelete(queryBuilder.deleteQuery(for: configKey) as CFDictionary)
+            SecItemDelete(queryBuilder.deleteQuery(for: providerConfigsKey) as CFDictionary)
+        }
+        #endif
 
         Logger.config.debug("Keychain using service identifier: \(self.service, privacy: .public)")
     }
