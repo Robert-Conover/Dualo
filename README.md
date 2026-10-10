@@ -74,7 +74,7 @@ Then select a simulator or device in Xcode and run the `Dualo` scheme.
 
 ## Run Tests
 ```bash
-xcodebuild test -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
+xcodebuild test -skipMacroValidation -project Dualo.xcodeproj -scheme Dualo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
 ## Under The Hood

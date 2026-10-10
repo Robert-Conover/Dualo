@@ -10,6 +10,8 @@ import OSLog
 
 // MARK: - Settings View
 
+/// The Settings sheet: custom instructions, on-device models, the OpenAI API key,
+/// and the app's version.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var localModelManager: LocalModelManager

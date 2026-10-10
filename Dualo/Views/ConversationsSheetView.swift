@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// The sheet listing every saved chat, with search, rename, delete, and a tap to open one.
 struct ConversationsSheetView: View {
     @EnvironmentObject var conversationManager: ConversationManager
     @Binding var selectedConversation: Conversation?

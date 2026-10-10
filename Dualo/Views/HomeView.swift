@@ -8,6 +8,8 @@
 import SwiftUI
 import OSLog
 
+/// The start screen: a composer for the first message over the prompt suggestions,
+/// or `ModelSetupCard` in their place when there's no API key and no downloaded model.
 struct HomeView: View {
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var voiceInput = VoiceInputController()
