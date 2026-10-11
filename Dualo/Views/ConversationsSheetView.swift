@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// The sheet listing every saved chat, with search, rename, delete, and a tap to open one.
+/// Saved chats, with pinned chats first, search, rename, delete, and a tap to open one.
 struct ConversationsSheetView: View {
     @EnvironmentObject var conversationManager: ConversationManager
     @Binding var selectedConversation: Conversation?
@@ -93,69 +93,109 @@ struct ConversationsSheetView: View {
     
     private func conversationsList(_ searchResults: [ConversationSearch.Result]) -> some View {
         List {
-            Section {
-                ForEach(searchResults) { result in
-                    let conversation = result.conversation
-                    Button(action: {
-                        HapticFeedback.light()
-                        selectedConversation = conversation
-                        isPresented = false
-                    }) {
-                        rowLayout {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(conversation.title)
-                                    .font(.callout.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                
-                                Text("\(timeString(from: conversation.updatedAt)) · ^[\(conversation.messages.count) message](inflect: true)")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+            conversationSection(searchResults.filter { $0.conversation.isPinned }, title: "Pinned")
+            conversationSection(searchResults.filter { !$0.conversation.isPinned }, title: isSearching ? "Results" : "Recents")
+        }
+        .listStyle(.insetGrouped)
+        .scrollDismissesKeyboard(.immediately)
+    }
 
-                                if let snippet = result.snippet {
-                                    Text(highlighted(snippet))
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                        .accessibilityIdentifier("conversationSearchSnippet")
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            modelBadge(for: conversation)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            conversationToDelete = conversation
-                            showingDeleteAlert = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            conversationToRename = conversation
-                            renameText = conversation.title
-                            showingRenameAlert = true
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
-                        .tint(.blue)
-                    }
+    @ViewBuilder
+    private func conversationSection(_ results: [ConversationSearch.Result], title: String) -> some View {
+        if !results.isEmpty {
+            Section {
+                ForEach(results) { result in
+                    conversationRow(result)
                 }
             } header: {
-                Text(isSearching ? "Results" : "Recents")
+                Text(title)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(nil)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private func conversationRow(_ result: ConversationSearch.Result) -> some View {
+        let conversation = result.conversation
+        return Button(action: {
+            HapticFeedback.light()
+            selectedConversation = conversation
+            isPresented = false
+        }) {
+            rowLayout {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        if conversation.isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        Text(conversation.title)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+
+                    Text("\(timeString(from: conversation.updatedAt)) · ^[\(conversation.messages.count) message](inflect: true)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    if let snippet = result.snippet {
+                        Text(highlighted(snippet))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .accessibilityIdentifier("conversationSearchSnippet")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                modelBadge(for: conversation)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("conversationRow-\(conversation.id)")
+        .accessibilityValue(conversation.isPinned ? "Pinned" : "")
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            pinButton(for: conversation)
+                .tint(.orange)
+        }
+        .contextMenu {
+            pinButton(for: conversation)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                conversationToDelete = conversation
+                showingDeleteAlert = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                conversationToRename = conversation
+                renameText = conversation.title
+                showingRenameAlert = true
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
+    }
+
+    private func pinButton(for conversation: Conversation) -> some View {
+        Button {
+            HapticFeedback.light()
+            withAnimation {
+                conversationManager.togglePin(for: conversation.id)
+            }
+        } label: {
+            Label(conversation.isPinned ? "Unpin" : "Pin", systemImage: conversation.isPinned ? "pin.slash" : "pin")
+        }
     }
 
     /// Side by side, or the badge under the text when accessibility text sizes leave no room

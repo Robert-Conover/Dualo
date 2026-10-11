@@ -311,8 +311,18 @@ class ConversationManager: ObservableObject, ConversationManaging {
         }
     }
     
+    /// Pinning doesn't change activity dates or recency, so unpinning restores the chat's place.
+    func togglePin(for conversationId: UUID) {
+        guard var conversation = conversations.first(where: { $0.id == conversationId }) else { return }
+        conversation.isPinned.toggle()
+        updateConversation(conversation, moveToTop: false)
+    }
+
     #if DEBUG
     private func determineUpdateReason(old: Conversation, new: Conversation) -> String {
+        if old.isPinned != new.isPinned {
+            return "pin changed"
+        }
         if old.messages.count != new.messages.count {
             return "message count changed (\(old.messages.count) → \(new.messages.count))"
         }

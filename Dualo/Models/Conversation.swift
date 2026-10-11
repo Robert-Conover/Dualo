@@ -16,6 +16,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
     var updatedAt: Date
     var provider: APIProvider
     var model: String
+    var isPinned = false
     
     // Custom initializer for decoding to handle migration from old format
     init(from decoder: Decoder) throws {
@@ -26,6 +27,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
         messages = try container.decode([Message].self, forKey: .messages)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         
         // Handle migration - if provider and model don't exist, use defaults
         if let existingProvider = try? container.decode(APIProvider.self, forKey: .provider),
@@ -41,7 +43,7 @@ struct Conversation: Identifiable, Codable, Equatable, Hashable {
     }
     
     private enum CodingKeys: String, CodingKey {
-        case id, title, messages, createdAt, updatedAt, provider, model
+        case id, title, messages, createdAt, updatedAt, provider, model, isPinned
     }
     
     init(title: String = AppConstants.Data.newChatTitle, messages: [Message] = [], provider: APIProvider? = nil, model: String? = nil) {

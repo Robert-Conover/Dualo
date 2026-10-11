@@ -39,7 +39,7 @@ Each conversation stores its own provider and model, so you can keep one chat on
 - `Real streaming responses` using SSE for cloud models and token callbacks for GGUF models
 - `On-device inference` with downloadable GGUF models from Hugging Face
 - `Image attachments` for cloud conversations using photo library or camera input
-- `Conversation management` with local persistence, search, rename, and deletion
+- `Conversation management` with local persistence, pinned chats, search, rename, and deletion
 - `Export tools` for PDF, Markdown, and plain text sharing
 - `Markdown rendering` with code block formatting and copy support
 - `Keychain-backed credentials` for secure API key storage

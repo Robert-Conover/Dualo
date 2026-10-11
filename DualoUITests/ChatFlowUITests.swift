@@ -258,6 +258,74 @@ final class ChatFlowUITests: XCTestCase {
         XCTAssertTrue(text(containing: "No Results").waitForExistence(timeout: 5), "No-results message missing")
     }
 
+    func testPinnedChatsStayAboveRecentsAndPersistAcrossLaunches() {
+        let keyword = "pin-\(UUID().uuidString.prefix(8))"
+        let olderTitle = "\(keyword) Older"
+        let newerTitle = "\(keyword) Newer"
+
+        startChat(with: olderTitle)
+        waitForReplyToFinish()
+        app.buttons["Back"].firstMatch.tap()
+        startChat(with: newerTitle)
+        waitForReplyToFinish()
+        app.buttons["Back"].firstMatch.tap()
+
+        func showMatchingChats() {
+            let conversations = app.buttons["Conversations"]
+            XCTAssertTrue(conversations.waitForExistence(timeout: 10))
+            conversations.tap()
+            let search = app.searchFields.firstMatch
+            XCTAssertTrue(search.waitForExistence(timeout: 5))
+            search.tap()
+            search.typeText(keyword)
+        }
+
+        func row(_ title: String) -> XCUIElement {
+            app.buttons.matching(NSPredicate(
+                format: "identifier BEGINSWITH 'conversationRow-' AND label CONTAINS %@", title
+            )).firstMatch
+        }
+
+        showMatchingChats()
+        let older = row(olderTitle)
+        let newer = row(newerTitle)
+        XCTAssertTrue(older.waitForExistence(timeout: 5))
+        XCTAssertTrue(newer.exists)
+        XCTAssertLessThan(newer.frame.minY, older.frame.minY)
+
+        older.press(forDuration: 1)
+        app.buttons["Pin"].tap()
+        let pinned = NSPredicate(format: "value == 'Pinned'")
+        expectation(for: pinned, evaluatedWith: older)
+        waitForExpectations(timeout: 5)
+        XCTAssertLessThan(older.frame.minY, newer.frame.minY, "Pinned chat didn't move above newer chats")
+
+        app.terminate()
+        app.launch()
+        showMatchingChats()
+        XCTAssertTrue(older.waitForExistence(timeout: 5))
+        XCTAssertEqual(older.value as? String, "Pinned", "Pin wasn't saved")
+        XCTAssertLessThan(older.frame.minY, newer.frame.minY)
+
+        // A partial right swipe exposes the leading action without invoking a full swipe.
+        older.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: older.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        let unpin = app.buttons["Unpin"]
+        XCTAssertTrue(unpin.waitForExistence(timeout: 5))
+        unpin.tap()
+        let unpinned = NSPredicate(format: "value != 'Pinned'")
+        expectation(for: unpinned, evaluatedWith: older)
+        waitForExpectations(timeout: 5)
+        XCTAssertLessThan(newer.frame.minY, older.frame.minY, "Unpinning changed the chat's recency")
+
+        app.terminate()
+        app.launch()
+        showMatchingChats()
+        XCTAssertTrue(older.waitForExistence(timeout: 5))
+        XCTAssertNotEqual(older.value as? String, "Pinned", "Unpin wasn't saved")
+        XCTAssertLessThan(newer.frame.minY, older.frame.minY)
+    }
+
     func testDictatedMessageCanBeSent() {
         // Under -UITestStubAPI, dictation "hears" StubVoiceTranscriber.phrase
         let mic = element("homeMicButton")
