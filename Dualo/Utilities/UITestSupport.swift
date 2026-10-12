@@ -9,7 +9,8 @@
 //  their own, cleared at each launch. Adding `-UITestFirstLaunch` starts the app as if
 //  freshly installed: no API settings or downloaded models, and a download that only
 //  pretends, then finds the model already on the simulator. Stubbed launches have
-//  OpenAI already allowed unless `-UITestAskCloudConsent` is added.
+//  OpenAI already allowed unless `-UITestAskCloudConsent` is added, and
+//  `-UITestCellular` makes model downloads act as if on cellular data.
 //
 
 #if DEBUG
@@ -26,6 +27,19 @@ enum UITestSupport {
 
     static var isSimulatingFirstLaunch: Bool {
         ProcessInfo.processInfo.arguments.contains(firstLaunchArgument)
+    }
+
+    static let cellularArgument = "-UITestCellular"
+
+    /// Whether the app should act as if it's on cellular data, so downloads ask first
+    static var isSimulatingCellular: Bool {
+        ProcessInfo.processInfo.arguments.contains(cellularArgument)
+    }
+
+    /// Where model files download from instead of Hugging Face, set with
+    /// `-UITestModelDownloadBaseURL <url>`, to try failed and resumed downloads against a local server
+    static var modelDownloadBaseURL: String? {
+        UserDefaults.standard.string(forKey: "UITestModelDownloadBaseURL")
     }
 
     static let askCloudConsentArgument = "-UITestAskCloudConsent"

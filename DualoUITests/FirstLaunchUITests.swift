@@ -4,7 +4,8 @@
 //
 //  Starts the app as if freshly installed (`-UITestFirstLaunch`): no API key and no
 //  downloaded model. The download only pretends, then finds Qwen3.5 0.8B already on the
-//  simulator, so the tests are skipped without it (see GGUFServiceIntegrationTests).
+//  simulator, so the tests that finish it are skipped without it (see
+//  GGUFServiceIntegrationTests). `-UITestCellular` makes it act as if on cellular data.
 //
 
 import XCTest
@@ -82,6 +83,28 @@ final class FirstLaunchUITests: XCTestCase {
 
         XCTAssertTrue(downloadButton.waitForExistence(timeout: 5), "Download isn't offered again")
         XCTAssertFalse(app.staticTexts["Try asking"].exists, "Setup card went away without a model")
+    }
+
+    func testDownloadOnCellularAsksFirst() {
+        app.terminate()
+        app.launchArguments.append("-UITestCellular")
+        app.launch()
+
+        XCTAssertTrue(downloadButton.waitForExistence(timeout: 10), "First launch doesn't offer the model")
+        downloadButton.tap()
+        let alert = app.alerts["Download on Cellular?"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "Didn't ask before downloading on cellular")
+        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS 'MB'")).firstMatch.exists,
+                      "The alert doesn't say how big the model is")
+
+        alert.buttons["Cancel"].tap()
+        XCTAssertFalse(element("setupDownloadProgress").waitForExistence(timeout: 2), "Download started after Cancel")
+
+        downloadButton.tap()
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        alert.buttons["Download"].tap()
+        XCTAssertTrue(element("setupDownloadProgress").waitForExistence(timeout: 5), "Download didn't start")
+        element("setupCancelButton").tap()
     }
 
     func testAPIKeyLinkOpensSettings() {

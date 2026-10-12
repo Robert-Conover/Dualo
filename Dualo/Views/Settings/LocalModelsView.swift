@@ -15,6 +15,8 @@ struct LocalModelsView: View {
     @State private var modelToDelete: LocalModel?
     @State private var downloadError: String?
     @State private var showDownloadError = false
+    /// A download waiting for the user to OK it on cellular data
+    @State private var cellularDownload: LocalModel?
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var deleteButtonSize: CGFloat = 32
     
@@ -38,6 +40,7 @@ struct LocalModelsView: View {
                 Text("Are you sure you want to delete \(model.displayName)? This will free up \(modelManager.getModelSizeString(model)) of storage.")
             }
         }
+        .cellularDownloadAlert(for: $cellularDownload, onDownload: startDownload)
         .alert("Download Error", isPresented: $showDownloadError) {
             Button("OK") {}
         } message: {
@@ -250,6 +253,14 @@ struct LocalModelsView: View {
     // MARK: - Actions
     
     private func downloadModel(_ model: LocalModel) {
+        if modelManager.isOnExpensiveNetwork {
+            cellularDownload = model
+        } else {
+            startDownload(model)
+        }
+    }
+
+    private func startDownload(_ model: LocalModel) {
         Task {
             do {
                 try await modelManager.downloadModel(model)

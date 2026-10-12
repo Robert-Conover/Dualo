@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct DualoApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
         #if DEBUG
