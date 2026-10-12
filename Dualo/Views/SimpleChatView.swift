@@ -9,6 +9,8 @@ import SwiftUI
 import UIKit
 import OSLog
 
+/// The chat screen for one saved conversation: its messages, the streaming reply,
+/// the composer, and the options menu (rename, export).
 struct SimpleChatView: View {
     let conversationId: UUID
 

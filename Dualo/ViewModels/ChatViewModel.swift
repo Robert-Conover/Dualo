@@ -572,7 +572,7 @@ class ChatViewModel: ObservableObject {
             Logger.chat.error("Failed to load API configuration: \(String(describing: error), privacy: .public)")
         }
         #if DEBUG
-        if UITestSupport.isStubbingAPI && apiConfiguration == nil {
+        if UITestSupport.isStubbingAPI && !UITestSupport.isSimulatingFirstLaunch && apiConfiguration == nil {
             apiConfiguration = UITestSupport.stubConfiguration()
         }
         #endif

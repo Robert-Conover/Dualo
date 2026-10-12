@@ -118,6 +118,12 @@ class LocalModelManager: ObservableObject {
         
         // Also load any user-imported models
         loadUserImportedModels(&models)
+
+        #if DEBUG
+        if UITestSupport.isSimulatingFirstLaunch {
+            models = LocalModelCatalog.availableModels
+        }
+        #endif
         
         availableModels = models
         persistStates()
@@ -178,6 +184,10 @@ class LocalModelManager: ObservableObject {
     }
     
     private func persistStates() {
+        #if DEBUG
+        // Leave the real download states for the next normal launch
+        if UITestSupport.isSimulatingFirstLaunch { return }
+        #endif
         let states = Dictionary(uniqueKeysWithValues: availableModels.map { ($0.id, $0.downloadState) })
         if let data = try? JSONEncoder().encode(states) {
             UserDefaults.standard.set(data, forKey: AppConstants.LocalModels.downloadedModelsKey)
@@ -283,6 +293,13 @@ class LocalModelManager: ObservableObject {
         isDownloading = true
         currentDownloadingModelId = model.id
         updateModelState(model.id, state: .downloading(progress: 0))
+
+        #if DEBUG
+        if UITestSupport.isSimulatingFirstLaunch {
+            try await pretendToDownload(model, to: destinationPath)
+            return
+        }
+        #endif
         
         Logger.localModels.info("Starting download of \(model.displayName, privacy: .public)")
         Logger.localModels.debug("URL: \(downloadURLString, privacy: .public)")
@@ -360,6 +377,31 @@ class LocalModelManager: ObservableObject {
         currentDownloadingModelId = nil
     }
     
+    #if DEBUG
+    /// Shows progress for a few seconds, then marks the model downloaded if its file is
+    /// already on the simulator
+    private func pretendToDownload(_ model: LocalModel, to destinationPath: URL) async throws {
+        defer {
+            isDownloading = false
+            currentDownloadingModelId = nil
+        }
+        for step in 1...10 {
+            try? await Task.sleep(for: .milliseconds(300))
+            // Cancelling sets the state back to not downloaded
+            guard availableModels.first(where: { $0.id == model.id })?.downloadState.isDownloading == true else { return }
+            updateModelState(model.id, state: .downloading(progress: Double(step) / 10))
+        }
+        guard fileManager.fileExists(atPath: destinationPath.path) else {
+            updateModelState(model.id, state: .failed(error: "Model isn't on the simulator"))
+            throw LocalModelError.downloadFailed("Model isn't on the simulator")
+        }
+        updateModelState(model.id, state: .downloaded(localPath: destinationPath.path))
+        if selectedModelId == nil {
+            selectedModelId = model.id
+        }
+    }
+    #endif
+
     /// Cancel an ongoing download
     func cancelDownload(_ modelId: String) {
         downloadTask?.cancel()

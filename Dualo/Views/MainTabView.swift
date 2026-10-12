@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// The app's root: shows Home, clearing any open chat so a new one starts from scratch.
 struct MainTabView: View {
     @EnvironmentObject var conversationManager: ConversationManager
 
