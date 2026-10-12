@@ -21,11 +21,16 @@ class ChatViewModel: ObservableObject {
     @Published var pendingAttachments: [ImageAttachment] = []
     /// The user message being edited in the composer; sending replaces it and its reply
     @Published private(set) var editingMessageId: UUID?
+    /// Whether a message to OpenAI is waiting for the user to allow it (see `CloudConsent`)
+    @Published private(set) var isAskingCloudConsent = false
 
     // MARK: - Dependencies (injected for testability)
     private let apiService: APIServiceProtocol
     private let conversationManager: ConversationManaging
     private let contextTracker: ContextTracking
+    private let defaults: UserDefaults
+
+    private var cloudConsentContinuation: CheckedContinuation<Bool, Never>?
 
     private var streamingTask: Task<Void, Never>?
     private var currentConversationId: UUID?
@@ -67,6 +72,7 @@ class ChatViewModel: ObservableObject {
         self.apiService = Self.defaultAPIService
         self.conversationManager = ConversationManager.shared
         self.contextTracker = ContextTracker.shared
+        self.defaults = .standard
         loadConfiguration()
     }
 
@@ -82,14 +88,17 @@ class ChatViewModel: ObservableObject {
     ///   - apiService: API service for cloud provider communication
     ///   - conversationManager: Conversation persistence manager
     ///   - contextTracker: Context window usage tracker
+    ///   - defaults: Where the user's answer to sending chats to OpenAI is kept
     init(
         apiService: APIServiceProtocol,
         conversationManager: ConversationManaging,
-        contextTracker: ContextTracking
+        contextTracker: ContextTracking,
+        defaults: UserDefaults = .standard
     ) {
         self.apiService = apiService
         self.conversationManager = conversationManager
         self.contextTracker = contextTracker
+        self.defaults = defaults
         loadConfiguration()
     }
     
@@ -263,7 +272,13 @@ class ChatViewModel: ObservableObject {
 
         let userMessage = Message(role: Message.Role.user, content: text, attachments: attachments, sendStatus: .sending)
         addMessageToConversation(userMessage)
-        
+
+        // Declining keeps the message, unsent, so it can be retried or sent to another model
+        guard await mayContact(config.provider) else {
+            updateMessageStatus(userMessage.id, status: .failed)
+            return
+        }
+
         startStreaming(text, history: history, attachments: attachments, userMessageId: userMessage.id, config: config)
     }
     
@@ -271,10 +286,11 @@ class ChatViewModel: ObservableObject {
     func retryMessage(_ messageId: UUID) async {
         guard let message = messages.first(where: { $0.id == messageId }),
               message.sendStatus == .failed,
-              let config = sendableConfiguration() else {
+              let config = sendableConfiguration(),
+              await mayContact(config.provider) else {
             return
         }
-        
+
         updateMessageStatus(messageId, status: .sending)
         
         // Get message history up to (but not including) this message
@@ -314,8 +330,10 @@ class ChatViewModel: ObservableObject {
     /// Replaces the last reply with a fresh one, from whichever model the chat uses now.
     func regenerateReply(_ messageId: UUID) async {
         guard messageId == regenerableMessageId,
-              let userIndex = messages.lastIndex(where: { $0.role == Message.Role.user }),
-              let config = sendableConfiguration() else {
+              let config = sendableConfiguration(),
+              await mayContact(config.provider),
+              messageId == regenerableMessageId, // The chat may have changed while the user was asked
+              let userIndex = messages.lastIndex(where: { $0.role == Message.Role.user }) else {
             return
         }
 
@@ -353,7 +371,31 @@ class ChatViewModel: ObservableObject {
         }
         return config
     }
-    
+
+    // MARK: - OpenAI Consent
+
+    /// Whether a message may go to `provider`. The first one to OpenAI waits for the user
+    /// to allow it, and only once allowed is it sent; on-device models never ask.
+    private func mayContact(_ provider: APIProvider) async -> Bool {
+        guard provider != .local, !CloudConsent.isGranted(in: defaults) else { return true }
+        cloudConsentContinuation?.resume(returning: false)
+        return await withCheckedContinuation { continuation in
+            cloudConsentContinuation = continuation
+            isAskingCloudConsent = true
+        }
+    }
+
+    /// The user's answer to sending chats to OpenAI. Allowing is remembered until it's
+    /// switched off in Settings; declining asks again with the next cloud message.
+    func answerCloudConsent(allowed: Bool) {
+        if allowed {
+            CloudConsent.grant(in: defaults)
+        }
+        isAskingCloudConsent = false
+        cloudConsentContinuation?.resume(returning: allowed)
+        cloudConsentContinuation = nil
+    }
+
     // MARK: - Streaming
     
     /// Adds an assistant placeholder and streams the reply to `text` into it.

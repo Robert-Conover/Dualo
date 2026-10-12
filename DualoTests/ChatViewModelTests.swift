@@ -91,6 +91,25 @@ private final class FakeContextTracker: ContextTracking {
     func estimateTokens(for text: String) -> Int { text.count / 4 }
 }
 
+// MARK: - Settings
+
+private extension UserDefaults {
+    /// Settings of a test's own, so tests don't read or change the app's
+    static func forTesting() -> UserDefaults {
+        let name = "DualoTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    /// Test settings where sending chats to OpenAI has already been allowed
+    static func allowingOpenAI() -> UserDefaults {
+        let defaults = forTesting()
+        CloudConsent.grant(in: defaults)
+        return defaults
+    }
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -107,7 +126,7 @@ struct ChatViewModelTests {
         ]
         let conversation = Conversation(title: "Test", messages: existing, provider: .openai, model: "gpt-6.1-sol")
         manager = FakeConversationManager(conversation)
-        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: tracker)
+        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: tracker, defaults: .allowingOpenAI())
         viewModel.loadConversation(conversation)
         viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "sk-test", model: "gpt-6.1-sol")
     }
@@ -342,6 +361,99 @@ struct ChatViewModelTests {
     }
 }
 
+// MARK: - Asking before sending to OpenAI
+
+@MainActor
+struct CloudConsentTests {
+    private let api = FakeAPIService()
+    private let manager: FakeConversationManager
+    private let defaults = UserDefaults.forTesting()
+    private let viewModel: ChatViewModel
+
+    init() {
+        let conversation = Conversation(title: "Test", provider: .openai, model: "gpt-6.1-sol")
+        manager = FakeConversationManager(conversation)
+        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: FakeContextTracker(), defaults: defaults)
+        viewModel.loadConversation(conversation)
+        viewModel.apiConfiguration = APIConfiguration(provider: .openai, apiKey: "sk-test", model: "gpt-6.1-sol")
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<1_000 where !condition() {
+            await Task.yield()
+        }
+        #expect(condition(), "Timed out waiting for the view model")
+    }
+
+    /// Starts `action` and waits for it to ask about sending to OpenAI
+    private func startAsking(_ action: @escaping () async -> Void) async -> Task<Void, Never> {
+        let task = Task { await action() }
+        await waitUntil { viewModel.isAskingCloudConsent }
+        return task
+    }
+
+    @Test func firstCloudMessageWaitsUntilAllowed() async {
+        let sending = await startAsking { await viewModel.sendMessage("Hi") }
+        #expect(api.requests.isEmpty, "Sent before the user allowed it")
+        #expect(viewModel.messages.map(\.sendStatus) == [.sending])
+
+        viewModel.answerCloudConsent(allowed: true)
+        await sending.value
+        #expect(api.requests.map(\.text) == ["Hi"])
+        #expect(!viewModel.isAskingCloudConsent)
+        #expect(CloudConsent.isGranted(in: defaults))
+
+        api.finish()
+        await waitUntil { !viewModel.isStreaming }
+        await viewModel.sendMessage("Again")
+        await waitUntil { api.requests.count == 2 }
+        #expect(!viewModel.isAskingCloudConsent, "Asked again after being allowed")
+    }
+
+    @Test func decliningKeepsTheMessageUnsentAndRetryingAsksAgain() async {
+        let sending = await startAsking { await viewModel.sendMessage("Hi") }
+        viewModel.answerCloudConsent(allowed: false)
+        await sending.value
+
+        #expect(api.requests.isEmpty)
+        #expect(viewModel.messages.map(\.content) == ["Hi"])
+        #expect(viewModel.messages.map(\.sendStatus) == [.failed])
+        #expect(!CloudConsent.isGranted(in: defaults))
+
+        let messageId = viewModel.messages[0].id
+        let retrying = await startAsking { await viewModel.retryMessage(messageId) }
+        viewModel.answerCloudConsent(allowed: true)
+        await retrying.value
+        #expect(api.requests.map(\.text) == ["Hi"])
+    }
+
+    @Test func decliningARegeneratedReplyKeepsTheOldOne() async {
+        CloudConsent.grant(in: defaults)
+        await viewModel.sendMessage("Hi")
+        await waitUntil { !api.requests.isEmpty }
+        api.yield("First reply")
+        api.finish()
+        await waitUntil { !viewModel.isStreaming }
+
+        defaults.removeObject(forKey: CloudConsent.key) // As if switched off in Settings
+        let replyId = viewModel.messages[1].id
+        let regenerating = await startAsking { await viewModel.regenerateReply(replyId) }
+        viewModel.answerCloudConsent(allowed: false)
+        await regenerating.value
+
+        #expect(api.requests.count == 1)
+        #expect(viewModel.messages.map(\.content) == ["Hi", "First reply"])
+    }
+
+    @Test func onDeviceModelsNeverAsk() async {
+        viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
+        await viewModel.sendMessage("Hi")
+        await waitUntil { !api.requests.isEmpty }
+        #expect(!viewModel.isAskingCloudConsent)
+        #expect(!CloudConsent.isGranted(in: defaults))
+    }
+}
+
 // MARK: - Chats named by the model
 
 @MainActor
@@ -353,7 +465,7 @@ struct ChatNamingTests {
     init() {
         let conversation = Conversation(provider: .local, model: "Qwen3.5-0.8B-Q4_K_M")
         manager = FakeConversationManager(conversation)
-        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: FakeContextTracker())
+        viewModel = ChatViewModel(apiService: api, conversationManager: manager, contextTracker: FakeContextTracker(), defaults: .allowingOpenAI()) // The cloud-chat test sends to OpenAI
         viewModel.loadConversation(conversation)
         viewModel.apiConfiguration = APIConfiguration(provider: .local, apiKey: "", model: "Qwen3.5-0.8B-Q4_K_M")
         api.title = "Trip to Japan"

@@ -64,6 +64,11 @@ struct SimpleChatView: View {
                 pendingAttachments: $pendingAttachments,
                 capturedImage: $capturedImage
             ))
+            .sheet(isPresented: isAskingCloudConsent) {
+                CloudConsentSheet { allowed in
+                    viewModel.answerCloudConsent(allowed: allowed)
+                }
+            }
             .background(Color.theme.chatBackground)
             .onAppear(perform: handleOnAppear)
             .onChange(of: currentProvider) { _, provider in
@@ -71,6 +76,18 @@ struct SimpleChatView: View {
             }
     }
     
+    /// Swiping the consent sheet away declines, like its Not Now button
+    private var isAskingCloudConsent: Binding<Bool> {
+        Binding(
+            get: { viewModel.isAskingCloudConsent },
+            set: { isShown in
+                if !isShown && viewModel.isAskingCloudConsent {
+                    viewModel.answerCloudConsent(allowed: false)
+                }
+            }
+        )
+    }
+
     // MARK: - Lifecycle Event Handlers (extracted to reduce body complexity)
     
     private func handleOnAppear() {

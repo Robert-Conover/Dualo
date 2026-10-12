@@ -11,6 +11,12 @@ import SwiftUI
 struct DualoApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        #if DEBUG
+        UITestSupport.prepareCloudConsent()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             MainTabView()

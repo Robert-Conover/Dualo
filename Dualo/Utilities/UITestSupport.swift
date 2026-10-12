@@ -8,7 +8,8 @@
 //  Local models still run for real. Stubbed launches keep API settings in a keychain of
 //  their own, cleared at each launch. Adding `-UITestFirstLaunch` starts the app as if
 //  freshly installed: no API settings or downloaded models, and a download that only
-//  pretends, then finds the model already on the simulator.
+//  pretends, then finds the model already on the simulator. Stubbed launches have
+//  OpenAI already allowed unless `-UITestAskCloudConsent` is added.
 //
 
 #if DEBUG
@@ -25,6 +26,16 @@ enum UITestSupport {
 
     static var isSimulatingFirstLaunch: Bool {
         ProcessInfo.processInfo.arguments.contains(firstLaunchArgument)
+    }
+
+    static let askCloudConsentArgument = "-UITestAskCloudConsent"
+
+    /// Stubbed launches start with OpenAI already allowed, so chat tests aren't stopped by
+    /// the consent sheet. Adding `-UITestAskCloudConsent` starts with it not yet asked.
+    static func prepareCloudConsent() {
+        guard isStubbingAPI else { return }
+        let allowed = !ProcessInfo.processInfo.arguments.contains(askCloudConsentArgument)
+        UserDefaults.standard.set(allowed, forKey: CloudConsent.key)
     }
 
     /// Stands in for a stored key so the composer and send paths treat the stub as configured.

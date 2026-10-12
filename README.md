@@ -54,8 +54,9 @@ Each conversation stores its own provider and model, so you can keep one chat on
 ## Privacy And Data
 - `Conversations` are stored locally as JSON files in the app's Documents directory
 - `API keys` are saved in iOS Keychain
-- `Cloud chats` send prompts and image attachments to OpenAI over HTTPS
+- `Cloud chats` send prompts, image attachments and custom instructions to OpenAI over HTTPS, after the app asks permission before the first message
 - `Local chats` stay on-device when using GGUF models
+- The [privacy policy](https://dualo.conov.io/privacy) is also in Settings; its web version and the support page are built from `site/`
 
 ## Requirements
 - iOS 26 or later

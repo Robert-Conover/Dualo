@@ -326,6 +326,30 @@ final class ChatFlowUITests: XCTestCase {
         XCTAssertLessThan(newer.frame.minY, older.frame.minY)
     }
 
+    func testFirstCloudMessageAsksBeforeSendingToOpenAI() {
+        app.terminate()
+        app.launchArguments.append("-UITestAskCloudConsent")
+        app.launch()
+
+        startChat(with: "Hello cloud")
+        let allow = element("cloudConsentAllowButton")
+        let decline = element("cloudConsentDeclineButton")
+        XCTAssertTrue(decline.waitForExistence(timeout: 5), "Didn't ask before sending to OpenAI")
+
+        decline.tap()
+        let retry = text(containing: "Tap to retry")
+        XCTAssertTrue(retry.waitForExistence(timeout: 5), "Declined message should stay, unsent")
+        XCTAssertFalse(stubEnd.exists, "Message was sent without permission")
+
+        retry.tap()
+        XCTAssertTrue(allow.waitForExistence(timeout: 5), "Retrying didn't ask again")
+        allow.tap()
+        waitForReplyToFinish()
+
+        sendInChat("Second message")
+        XCTAssertFalse(allow.waitForExistence(timeout: 2), "Asked again after being allowed")
+    }
+
     func testDictatedMessageCanBeSent() {
         // Under -UITestStubAPI, dictation "hears" StubVoiceTranscriber.phrase
         let mic = element("homeMicButton")
