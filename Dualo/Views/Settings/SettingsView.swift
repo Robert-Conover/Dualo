@@ -10,8 +10,8 @@ import OSLog
 
 // MARK: - Settings View
 
-/// The Settings sheet: custom instructions, on-device models, the OpenAI API key,
-/// and the app's version.
+/// The Settings sheet: custom instructions, on-device models, the OpenAI API key and
+/// permission to send chats to OpenAI, the privacy policy, and the app's version.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var localModelManager: LocalModelManager
@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var apiKeyValidationError: String?
     @AppStorage(CustomInstructions.key) private var customInstructions = ""
     @AppStorage(AppConstants.LocalModels.showGenerationStatsKey) private var showGenerationStats = true
+    @AppStorage(CloudConsent.key) private var allowsSendingToOpenAI = false
 
     // App version from bundle
     private var appVersion: String {
@@ -61,6 +62,16 @@ struct SettingsView: View {
                 
                 // MARK: - About Section
                 Section("About") {
+                    NavigationLink(destination: PrivacyPolicyView()) {
+                        SettingsRow(
+                            icon: "hand.raised.fill",
+                            title: "Privacy Policy",
+                            color: .blue,
+                            showChevron: false
+                        )
+                    }
+                    .accessibilityIdentifier("privacyPolicyRow")
+
                     SettingsInfoRow(
                         icon: "info.circle",
                         title: "Version",
@@ -161,6 +172,17 @@ struct SettingsView: View {
                 }
             )
             
+            Toggle(isOn: $allowsSendingToOpenAI) {
+                SettingsRow(
+                    icon: "paperplane",
+                    title: "Send Chats to OpenAI",
+                    color: .purple,
+                    subtitle: allowsSendingToOpenAI ? "Allowed for chats on OpenAI models" : "Asks before the first message",
+                    showChevron: false
+                )
+            }
+            .accessibilityIdentifier("cloudConsentToggle")
+
             // Resources link
             APIKeyLinkRow()
         } header: {

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dualo Privacy Policy</title>
+  <meta name="description" content="How Dualo handles your data: chats stay on your device, and go to OpenAI only when you choose an OpenAI model.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav>
+    <a class="home" href="/">Dualo</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/support">Support</a>
+  </nav>
+  <main>
+    <!-- Keep in step with Dualo/Models/PrivacyPolicy.swift; PrivacyPolicyTests checks they match. -->
+    <h1>Privacy Policy</h1>
+    <p class="meta">Effective October 11, 2026</p>
+
+    <h2>The short version</h2>
+    <p>Dualo doesn't collect any data about you. There's no account, no analytics, no advertising and no tracking. Your chats are saved only on your device. A chat is sent to OpenAI only when it uses an OpenAI model, and only after you've allowed it.</p>
+
+    <h2>On-device models</h2>
+    <p>Chats with an on-device model are processed entirely on your device and never leave it.</p>
+    <p>To download a model, Dualo fetches the model file from <a href="https://huggingface.co">Hugging Face</a>. Like any website, Hugging Face can see the request, including your IP address. No chat data is sent with it.</p>
+
+    <h2>OpenAI models</h2>
+    <p>Cloud models are optional and use your own OpenAI API key. When you send a message in a chat that uses an OpenAI model, Dualo sends it to OpenAI together with the earlier messages in that chat, any photos attached to them, and your custom instructions.</p>
+    <p>Dualo asks for your permission before the first message is sent to OpenAI. You can withdraw it anytime in Settings, and Dualo will ask again before sending anything else.</p>
+    <p>OpenAI handles this data under its own <a href="https://openai.com/policies/privacy-policy">privacy policy</a> and your agreement with OpenAI. It goes straight from your device to OpenAI. The developer of Dualo never receives it.</p>
+
+    <h2>What's stored on your device</h2>
+    <p>Your chats, attached photos, custom instructions and settings are stored by the app on your device, and your API key is stored in the iOS Keychain. To make on-device chats faster, Dualo also keeps a temporary copy of what the model has read for a few recent chats.</p>
+    <p>Deleting a chat deletes it and its temporary copy. Deleting the app deletes your chats and settings. If you back up your device, your chats are included in the backup, under Apple's terms.</p>
+
+    <h2>Voice input</h2>
+    <p>Dictation uses Apple's speech recognition on your device. Audio isn't recorded, saved or sent anywhere.</p>
+
+    <h2>Sharing chats</h2>
+    <p>When you export a chat, it goes only where you choose to share it.</p>
+
+    <h2>Children</h2>
+    <p>Dualo isn't directed at children under 13 and doesn't knowingly collect information from them.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes, the new version will be posted at <a href="https://dualo.conov.io/privacy">dualo.conov.io/privacy</a> and in the app, with a new effective date.</p>
+
+    <h2>Contact</h2>
+    <p>Questions about privacy? Email <a href="mailto:dualo@conov.io">dualo@conov.io</a>.</p>
+
+    <footer>Dualo · <a href="/support">Support</a></footer>
+  </main>
+</body>
+</html>

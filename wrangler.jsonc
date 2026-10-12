@@ -1,0 +1,10 @@
+// Serves the website in site/ (dualo.conov.io: privacy policy, support, home) as
+// static assets on Cloudflare Workers, deployed from main. /privacy serves
+// privacy.html. The name must match the Worker's name in the Cloudflare dashboard.
+{
+  "name": "dualo",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./site"
+  }
+}
