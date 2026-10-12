@@ -70,7 +70,7 @@ struct ModelSetupCard: View {
                         .font(.footnote.weight(.medium))
                         .accessibilityIdentifier("setupCancelButton")
                 }
-                Text("Keep Dualo open until the download finishes.")
+                Text("It keeps downloading if you leave Dualo.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

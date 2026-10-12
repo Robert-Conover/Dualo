@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import LLM
+import Network
 import OSLog
 
 // MARK: - Local Model Error
@@ -51,12 +52,16 @@ class LocalModelManager: ObservableObject {
     @Published var isDownloading: Bool = false
     @Published var currentDownloadingModelId: String?
     @Published var errorMessage: String?
+    /// Whether the connection is cellular data or a hotspot, so a download asks first
+    @Published private(set) var isOnExpensiveNetwork = false
     
     // MARK: - Private Properties
     
     private let fileManager = FileManager.default
-    private var downloadTask: URLSessionDownloadTask?
-    private var downloadObservation: NSKeyValueObservation?
+    private let downloader = ModelDownloader.shared
+    private let networkMonitor = NWPathMonitor()
+    /// Callers of `downloadModel` waiting for their download to end
+    private var downloadWaiters: [String: CheckedContinuation<Void, Error>] = [:]
     
     // MARK: - Storage Paths
     
@@ -70,6 +75,11 @@ class LocalModelManager: ObservableObject {
     private init() {
         setupModelsDirectory()
         loadAvailableModels()
+        startMonitoringNetwork()
+        downloader.activate { [weak self] event in
+            self?.handle(event)
+        }
+        Task { await restoreDownloads() }
     }
     
     private func setupModelsDirectory() {
@@ -80,6 +90,31 @@ class LocalModelManager: ObservableObject {
                 Logger.localModels.fault("Failed to create models directory: \(String(describing: error), privacy: .public)")
             }
         }
+        // Models can be downloaded again, so Apple asks that they stay out of iCloud backups
+        var directory = modelsDirectory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        do {
+            try directory.setResourceValues(values)
+        } catch {
+            Logger.localModels.error("Failed to exclude models from backup: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    private func startMonitoringNetwork() {
+        #if DEBUG
+        if UITestSupport.isSimulatingCellular {
+            isOnExpensiveNetwork = true
+            return
+        }
+        #endif
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            let isExpensive = path.isExpensive
+            Task { @MainActor [weak self] in
+                self?.isOnExpensiveNetwork = isExpensive
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "LocalModelManager.network"))
     }
     
     private func loadAvailableModels() {
@@ -268,8 +303,12 @@ class LocalModelManager: ObservableObject {
     
     // MARK: - Download Management
     
-    /// Download a GGUF model from Hugging Face
+    /// Downloads a GGUF model from Hugging Face, returning when it's done or cancelled.
+    /// It runs in the background session, so it keeps going if the user leaves the app,
+    /// and if an earlier attempt stopped partway it carries on from there.
     func downloadModel(_ model: LocalModel) async throws {
+        guard !(availableModels.first(where: { $0.id == model.id })?.downloadState.isDownloading ?? false) else { return }
+
         // Check storage space
         if DeviceCapability.availableStorageBytes < model.sizeBytes {
             throw LocalModelError.insufficientStorage
@@ -281,7 +320,12 @@ class LocalModelManager: ObservableObject {
         
         // Build the download URL
         // Format: https://huggingface.co/{repo}/resolve/main/{filename}
-        let downloadURLString = "https://huggingface.co/\(model.huggingFaceRepo)/resolve/main/\(ggufFileName)"
+        var downloadURLString = "https://huggingface.co/\(model.huggingFaceRepo)/resolve/main/\(ggufFileName)"
+        #if DEBUG
+        if let baseURL = UITestSupport.modelDownloadBaseURL {
+            downloadURLString = "\(baseURL)/\(ggufFileName)"
+        }
+        #endif
         guard let downloadURL = URL(string: downloadURLString) else {
             throw LocalModelError.downloadFailed("Invalid download URL")
         }
@@ -304,77 +348,63 @@ class LocalModelManager: ObservableObject {
         Logger.localModels.info("Starting download of \(model.displayName, privacy: .public)")
         Logger.localModels.debug("URL: \(downloadURLString, privacy: .public)")
         Logger.localModels.debug("Destination: \(destinationPath.path, privacy: .public)")
-        
-        do {
-            // Create download delegate for progress tracking
-            let delegate = DownloadProgressDelegate { [weak self] progress in
-                Task { @MainActor [weak self] in
-                    self?.updateModelState(model.id, state: .downloading(progress: progress))
-                    if Int(progress * 100) % 10 == 0 {
-                        Logger.localModels.debug("Progress: \(Int(progress * 100))%")
-                    }
-                }
-            }
-            
-            // Create a session with the delegate
-            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-            
-            // Use continuation to bridge delegate-based API to async/await
-            let tempURL: URL = try await withCheckedThrowingContinuation { continuation in
-                delegate.completionHandler = { result in
-                    switch result {
-                    case .success(let url):
-                        continuation.resume(returning: url)
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
-                    }
-                }
-                
-                let task = session.downloadTask(with: downloadURL)
-                self.downloadTask = task
-                task.resume()
-            }
-            
-            // Move to final destination
-            if fileManager.fileExists(atPath: destinationPath.path) {
-                try fileManager.removeItem(at: destinationPath)
-            }
-            try fileManager.moveItem(at: tempURL, to: destinationPath)
-            
-            Logger.localModels.info("Model \(model.displayName, privacy: .public) downloaded successfully")
-            Logger.localModels.debug("Saved to: \(destinationPath.path, privacy: .public)")
-            
-            // Update state
-            updateModelState(model.id, state: .downloaded(localPath: destinationPath.path))
-            
-            // Select this model if it's the first downloaded
+
+        try await withCheckedThrowingContinuation { continuation in
+            downloadWaiters[model.id]?.resume() // Only one caller waits for each model
+            downloadWaiters[model.id] = continuation
+            downloader.start(modelId: model.id, from: downloadURL, to: destinationPath)
+        }
+    }
+
+    /// Applies what the background session reports, including for downloads that ended
+    /// while the app wasn't running
+    private func handle(_ event: ModelDownloader.Event) {
+        switch event {
+        case .progress(let modelId, let fraction):
+            // A cancelled download can still report progress on its way out
+            guard availableModels.first(where: { $0.id == modelId })?.downloadState.isDownloading == true else { return }
+            updateModelState(modelId, state: .downloading(progress: fraction), persist: false)
+
+        case .finished(let modelId, let file):
+            updateModelState(modelId, state: .downloaded(localPath: file.path))
             if selectedModelId == nil {
-                selectedModelId = model.id
+                selectedModelId = modelId
             }
-            
-        } catch {
-            // Check if this was a user-initiated cancellation (URLError.cancelled)
-            // In that case, cancelDownload() already set the state to .notDownloaded
-            let isCancellation = (error as? URLError)?.code == .cancelled
-            
-            if isCancellation {
-                Logger.localModels.info("Download cancelled for \(model.displayName, privacy: .public)")
-                // State already set to .notDownloaded by cancelDownload(), don't overwrite
-            } else {
-                Logger.localModels.error("Download failed: \(String(describing: error), privacy: .public)")
-                updateModelState(model.id, state: .failed(error: error.localizedDescription))
-            }
-            
+            endDownload(modelId, result: .success(()))
+
+        case .failed(let modelId, let error):
+            let message = ModelDownloader.failureMessage(for: error, canResume: downloader.canResume(modelId: modelId))
+            updateModelState(modelId, state: .failed(error: message))
+            endDownload(modelId, result: .failure(LocalModelError.downloadFailed(message)))
+        }
+    }
+
+    private func endDownload(_ modelId: String, result: Result<Void, Error>) {
+        if currentDownloadingModelId == modelId {
             isDownloading = false
             currentDownloadingModelId = nil
-            
-            if !isCancellation {
-                throw LocalModelError.downloadFailed(error.localizedDescription)
+        }
+        downloadWaiters.removeValue(forKey: modelId)?.resume(with: result)
+    }
+
+    /// After a launch, shows downloads still running in the background session, and
+    /// marks ones that stopped while the app was closed so they can be continued
+    private func restoreDownloads() async {
+        #if DEBUG
+        if UITestSupport.isSimulatingFirstLaunch { return }
+        #endif
+        let active = await downloader.activeDownloads()
+        for model in availableModels {
+            if let fraction = active[model.id] {
+                isDownloading = true
+                currentDownloadingModelId = model.id
+                updateModelState(model.id, state: .downloading(progress: fraction))
+            } else if model.downloadState.isDownloading {
+                let canResume = downloader.canResume(modelId: model.id)
+                let message = canResume ? "The download stopped. Try again to pick up where it left off." : "The download stopped."
+                updateModelState(model.id, state: .failed(error: message))
             }
         }
-        
-        isDownloading = false
-        currentDownloadingModelId = nil
     }
     
     #if DEBUG
@@ -402,18 +432,11 @@ class LocalModelManager: ObservableObject {
     }
     #endif
 
-    /// Cancel an ongoing download
+    /// Cancels a download, or forgets a stopped one, so it starts over next time
     func cancelDownload(_ modelId: String) {
-        downloadTask?.cancel()
-        downloadTask = nil
-        downloadObservation = nil
-        
+        downloader.cancel(modelId: modelId)
         updateModelState(modelId, state: .notDownloaded)
-        
-        if currentDownloadingModelId == modelId {
-            isDownloading = false
-            currentDownloadingModelId = nil
-        }
+        endDownload(modelId, result: .success(()))
         
         Logger.localModels.info("Download cancelled for \(modelId, privacy: .public)")
     }
@@ -507,7 +530,8 @@ class LocalModelManager: ObservableObject {
     
     // MARK: - Private Helpers
     
-    private func updateModelState(_ modelId: String, state: LocalModelDownloadState) {
+    /// Progress updates skip saving, since they come many times a second
+    private func updateModelState(_ modelId: String, state: LocalModelDownloadState, persist: Bool = true) {
         if let index = availableModels.firstIndex(where: { $0.id == modelId }) {
             availableModels[index].downloadState = state
             
@@ -517,47 +541,9 @@ class LocalModelManager: ObservableObject {
                 downloadProgress[modelId] = nil
             }
             
-            persistStates()
-        }
-    }
-}
-
-// MARK: - Download Progress Delegate
-
-private class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
-    private let progressHandler: (Double) -> Void
-    var completionHandler: ((Result<URL, Error>) -> Void)?
-    private var tempFileURL: URL?
-    
-    init(progressHandler: @escaping (Double) -> Void) {
-        self.progressHandler = progressHandler
-    }
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        progressHandler(progress)
-    }
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        // Copy the file to a temporary location before the delegate returns
-        // (the location URL becomes invalid after this method returns)
-        do {
-            let tempDir = FileManager.default.temporaryDirectory
-            let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".gguf")
-            try FileManager.default.copyItem(at: location, to: tempFile)
-            tempFileURL = tempFile
-        } catch {
-            completionHandler?(.failure(error))
-        }
-    }
-    
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
-            completionHandler?(.failure(error))
-        } else if let tempFileURL = tempFileURL {
-            completionHandler?(.success(tempFileURL))
-        } else {
-            completionHandler?(.failure(LocalModelError.downloadFailed("Download completed but file not found")))
+            if persist {
+                persistStates()
+            }
         }
     }
 }

@@ -28,6 +28,8 @@ struct HomeView: View {
     @State private var showModelLoadError = false
     @State private var modelLoadErrorMessage = ""
     @State private var setupErrorMessage: String?
+    /// A download waiting for the user to OK it on cellular data
+    @State private var cellularDownload: LocalModel?
     
     @FocusState private var isInputFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -126,6 +128,7 @@ struct HomeView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .cellularDownloadAlert(for: $cellularDownload, onDownload: startDownload)
             .alert("Model Load Error", isPresented: $showModelLoadError) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -521,6 +524,14 @@ struct HomeView: View {
 
     private func download(_ model: LocalModel) {
         HapticFeedback.light()
+        if localModelManager.isOnExpensiveNetwork {
+            cellularDownload = model
+        } else {
+            startDownload(model)
+        }
+    }
+
+    private func startDownload(_ model: LocalModel) {
         setupErrorMessage = nil
         Task {
             do {
