@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex) when workin
 
 ## Build & Run
 
-Open `Dualo.xcodeproj` in Xcode, select a simulator or device, and build (Cmd+R). iOS 26+ required.
+Open `Dualo.xcodeproj` in Xcode, select a simulator or device, and build (Cmd+R). iOS 26+ required. The app is iPhone only (`TARGETED_DEVICE_FAMILY = 1`; on iPad it runs in a phone-sized window), since a version that supports iPad can't drop it in an update; add iPad once its layout has been built and tested. Builds declare `ITSAppUsesNonExemptEncryption = NO` (it only uses HTTPS and the Keychain), so uploads skip the export-compliance question.
 
 **Build (CLI):**
 ```bash
