@@ -46,11 +46,19 @@ final class LocalModelUITests: XCTestCase {
         waitForExpectations(timeout: timeout)
     }
 
+    /// Taps Send once it's enabled. It stays disabled until the local model has loaded, and a
+    /// tap before then does nothing, which the wait for "Send" would take for a finished reply.
+    private func tapSend() {
+        let enabled = expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: sendButton)
+        wait(for: [enabled], timeout: 60)
+        sendButton.tap()
+    }
+
     private func send(_ message: String) {
         let composer = element("chatComposer")
         composer.tap()
         composer.typeText(message)
-        sendButton.tap()
+        tapSend()
     }
 
     /// Opens a chat with `firstMessage` (on the stubbed cloud model) and switches it to Qwen3.5 0.8B.
@@ -180,8 +188,10 @@ final class LocalModelUITests: XCTestCase {
         let paste = app.menuItems["Paste"].exists ? app.menuItems["Paste"] : app.buttons["Paste"]
         XCTAssertTrue(paste.waitForExistence(timeout: 5), "Paste option didn't appear")
         paste.tap()
-        sendButton.tap()
-        waitForLabel("Send", on: sendButton, timeout: 300)
+        tapSend()
+        waitForLabel("Stop", on: sendButton, timeout: 10)
+        // The Simulator's CPU takes two to three minutes to read the note, more on a busy Mac
+        waitForLabel("Send", on: sendButton, timeout: 600)
 
         let divider = element("modelMemoryDivider")
         XCTAssertTrue(divider.waitForExistence(timeout: 10), "No divider where the model's memory starts")
